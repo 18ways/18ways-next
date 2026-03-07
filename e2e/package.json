@@ -1,0 +1,19 @@
+{
+  "name": "e2e-tests",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun scripts/run-e2e.ts",
+    "clean": "bun scripts/clean-cache.ts",
+    "debug:e2e": "bun scripts/debug.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "@types/bun": "latest",
+    "@types/node": "^20.0.0",
+    "chalk": "^5.6.2",
+    "typescript": "^5.0.0"
+  },
+  "packageManager": "bun@1.3.8"
+}

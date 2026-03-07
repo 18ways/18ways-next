@@ -1,0 +1,9 @@
+{
+  "type": "nextjs",
+  "version": "15.5.9",
+  "buildCommand": "bunx next build",
+  "serveCommand": "bunx next start -p 4303",
+  "devCommand": "bunx next dev -p 4303",
+  "port": 4303,
+  "testUrl": "http://localhost:4303"
+}

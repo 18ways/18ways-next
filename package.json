@@ -1,0 +1,57 @@
+{
+  "name": "@18ways/next",
+  "version": "0.0.3",
+  "type": "module",
+  "main": "./next.ts",
+  "module": "./next.ts",
+  "types": "./next.ts",
+  "exports": {
+    ".": {
+      "types": "./next.ts",
+      "import": "./next.ts"
+    },
+    "./client": {
+      "types": "./client.ts",
+      "import": "./client.ts"
+    },
+    "./next-client": {
+      "types": "./next-client.ts",
+      "import": "./next-client.ts"
+    },
+    "./server": {
+      "types": "./server.tsx",
+      "import": "./server.tsx"
+    }
+  },
+  "scripts": {
+    "build": "echo '18ways-next build: source-only package'",
+    "ts:check": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "e2e": "cd e2e && mkdir -p test-results && bun scripts/run-e2e.ts --suite core"
+  },
+  "dependencies": {
+    "@18ways/core": "*",
+    "@18ways/react": "*"
+  },
+  "peerDependencies": {
+    "next": ">=14",
+    "react": "^16.8.0 || ^17.0.0 || ^18.0.0",
+    "react-dom": "^16.8.0 || ^17.0.0 || ^18.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.1",
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^5.0.1",
+    "jsdom": "^26.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.6.2",
+    "vitest": "^3.2.4"
+  },
+  "license": "ISC",
+  "description": "Next.js adapter for 18ways",
+  "packageManager": "bun@1.3.8"
+}

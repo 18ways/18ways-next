@@ -1,0 +1,122 @@
+{
+  "config": {
+    "configFile": "/Users/stephen/workspace/18ways/packages/18ways-next/e2e/playwright.config.ts",
+    "rootDir": "/Users/stephen/workspace/18ways/packages/18ways-next/e2e/tests",
+    "forbidOnly": false,
+    "fullyParallel": true,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "reporter": [
+      [
+        "json",
+        {
+          "outputFile": "/Users/stephen/workspace/18ways/packages/18ways-next/e2e/test-results/nextjs-basic-results.json"
+        }
+      ],
+      [
+        "/Users/stephen/workspace/18ways/packages/18ways-next/e2e/utils/progress-reporter.ts",
+        {
+          "progressFile": "/Users/stephen/workspace/18ways/packages/18ways-next/e2e/test-results/nextjs-basic-progress.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "quiet": false,
+    "projects": [
+      {
+        "outputDir": "/Users/stephen/workspace/18ways/packages/18ways-next/e2e/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/Users/stephen/workspace/18ways/packages/18ways-next/e2e/tests",
+        "testIgnore": [],
+        "testMatch": ["**/*.@(spec|test).?(c|m)[jt]s?(x)"],
+        "timeout": 30000
+      }
+    ],
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.57.0",
+    "workers": 14,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "core.test.ts",
+      "file": "core.test.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Core Translation Functionality",
+          "file": "core.test.ts",
+          "line": 4,
+          "column": 6,
+          "specs": [
+            {
+              "title": "loads in English, switches to Japanese, then Spanish",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 561,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-07T22:51:58.724Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "0812895678d11223965b-67bca9d5e88750cdf022",
+              "file": "core.test.ts",
+              "line": 11,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-03-07T22:51:58.432Z",
+    "duration": 1254.721,
+    "expected": 1,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
