@@ -10,6 +10,7 @@ import { LocalePathSync } from './next-locale-sync';
 import { LocaleRuntimeConfigProvider } from './next-locale-runtime';
 import {
   DEFAULT_WAYS_PATH_ROUTING,
+  SUPPORTED_LOCALES,
   WAYS_LOCALE_COOKIE_NAME,
   WAYS_LOCALE_HEADER_NAME,
   WAYS_PATHNAME_HEADER_NAME,
@@ -289,11 +290,14 @@ const resolveMetadataInput = async (params: {
 export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
   const { pathRouting, ...waysRootOptions } = options;
   const effectivePathRouting = pathRouting || DEFAULT_WAYS_PATH_ROUTING;
+  const defaultAcceptedLocales = waysRootOptions.acceptedLocales || [...SUPPORTED_LOCALES];
   const defaultMiddlewareOptions = createWaysMiddlewareOptions({
     baseLocale: waysRootOptions.baseLocale,
     pathRouting: effectivePathRouting,
+    acceptedLocales: defaultAcceptedLocales,
+    supportedLocales: defaultAcceptedLocales,
   });
-  const rootProps = { ...waysRootOptions };
+  const rootProps = { ...waysRootOptions, acceptedLocales: defaultAcceptedLocales };
   const localeProps: Partial<Pick<WaysRootProps, 'locale' | 'baseLocale'>> = {
     locale: waysRootOptions.locale,
     baseLocale: waysRootOptions.baseLocale,
@@ -417,6 +421,8 @@ export type WaysMiddlewareOptions = {
   baseLocale?: string;
   pathRouting?: WaysPathRoutingConfig;
   syncMode?: LocaleSyncMode;
+  acceptedLocales?: string[];
+  supportedLocales?: string[];
 };
 
 export type WaysMiddlewareResolution =
@@ -462,11 +468,15 @@ export const createWaysMiddlewareOptions = (input: {
   baseLocale?: string;
   pathRouting?: WaysPathRoutingConfig;
   syncMode?: LocaleSyncMode;
+  acceptedLocales?: string[];
+  supportedLocales?: string[];
 }): WaysMiddlewareOptions => {
   return {
     baseLocale: input.baseLocale,
     pathRouting: input.pathRouting || DEFAULT_WAYS_PATH_ROUTING,
     syncMode: input.syncMode,
+    acceptedLocales: input.acceptedLocales,
+    supportedLocales: input.supportedLocales,
   };
 };
 
@@ -510,6 +520,8 @@ const createWaysMiddlewareContext = (input: {
   request: NextRequest;
   baseLocale: string;
   pathRouting: WaysPathRoutingConfig;
+  supportedLocales?: string[];
+  acceptedLocales?: string[];
 }): {
   context: WaysMiddlewareContext;
   state: WaysMiddlewareState;
@@ -525,6 +537,8 @@ const createWaysMiddlewareContext = (input: {
   const context: WaysMiddlewareContext = {
     pathname: normalizedPathname,
     baseLocale: input.baseLocale,
+    supportedLocales: input.supportedLocales,
+    acceptedLocales: input.acceptedLocales,
     pathRouting: input.pathRouting,
     readCookie: (cookieName) => input.request.cookies.get(cookieName)?.value || null,
     writeCookie: (cookieName, locale, cookieOptions) => {
@@ -558,14 +572,18 @@ export const resolveWaysMiddleware = async (
 ): Promise<WaysMiddlewareResolution> => {
   const baseLocale = recognizeLocale(options?.baseLocale) || 'en-GB';
   const pathRouting = options?.pathRouting || DEFAULT_WAYS_PATH_ROUTING;
+  const supportedLocales = options?.supportedLocales;
+  const acceptedLocales = options?.acceptedLocales;
   const { context, state } = createWaysMiddlewareContext({
     request,
     baseLocale,
     pathRouting,
+    supportedLocales,
+    acceptedLocales,
   });
   const engine = createNextLocaleEngine<WaysMiddlewareContext>({
     baseLocale,
-    acceptedLocales: context.acceptedLocales,
+    acceptedLocales,
   });
 
   const resolution = await engine.resolveAndSync(context, {
@@ -698,6 +716,5 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 export const config = {
   matcher: [
     '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
-    '/(api|trpc)(.*)',
   ],
 };

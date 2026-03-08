@@ -1,5 +1,6 @@
 import React from 'react';
 import { cookies, headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { Ways as ClientWays } from '@18ways/react';
 import type { WaysProps, WaysRootProps } from '@18ways/react';
 import {
@@ -9,7 +10,9 @@ import {
   WAYS_PATHNAME_HEADER_NAME,
   WAYS_LOCALIZED_PATHNAME_HEADER_NAME,
   buildLocalizedPathname,
+  extractLocalePrefix,
   fetchAcceptedLocales,
+  isPathRoutingEnabled,
   isRtlLocale,
   joinOriginAndPathname,
   localeToOpenGraphLocale,
@@ -148,6 +151,21 @@ export async function Ways(props: WaysProps): Promise<React.JSX.Element> {
 
   const resolved = await resolveLocaleFromRequest(props);
   const locale = props.locale || resolved.locale;
+  const { localizedPathname } = await resolveRequestPaths(locale);
+  const knownLocales =
+    Array.isArray(props.acceptedLocales) && props.acceptedLocales.length
+      ? props.acceptedLocales
+      : resolved.supportedLocales;
+  const localePath = extractLocalePrefix(localizedPathname, knownLocales);
+
+  if (
+    localePath.locale &&
+    localePath.locale !== locale &&
+    isPathRoutingEnabled(localePath.unlocalizedPathname, DEFAULT_WAYS_PATH_ROUTING)
+  ) {
+    redirect(buildLocalizedPathname(localePath.unlocalizedPathname, locale));
+  }
+
   return (
     <ClientWays
       {...props}

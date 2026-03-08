@@ -19,6 +19,7 @@ export type PathLocaleResolution = {
 export type NextLocaleDriverContext = {
   pathname: string;
   baseLocale: string;
+  supportedLocales?: string[];
   acceptedLocales?: string[];
   pathRouting?: WaysPathRoutingConfig;
   currentLocale?: string;
