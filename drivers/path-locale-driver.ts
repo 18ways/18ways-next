@@ -1,25 +1,54 @@
 import { LocaleDriver } from '@18ways/core/locale-engine';
 import {
   buildLocalizedPathname,
+  extractLocalePrefix,
   extractRecognizedLocalePrefix,
+  findSupportedLocale,
   isPathRoutingEnabled,
   normalizePathname,
 } from '@18ways/core/i18n-shared';
 import type { NextLocaleDriverContext, PathLocaleResolution } from './next-locale-driver-types';
 
+const extractPathLocaleInfo = (pathname: string, context: NextLocaleDriverContext) => {
+  const normalizedPathname = normalizePathname(pathname);
+  const supportedLocales = context.supportedLocales?.length
+    ? context.supportedLocales
+    : context.acceptedLocales;
+  if (supportedLocales?.length) {
+    return extractLocalePrefix(normalizedPathname, supportedLocales);
+  }
+
+  return extractRecognizedLocalePrefix(normalizedPathname);
+};
+
+const resolveAcceptedPathLocale = (
+  locale: string | null,
+  context: NextLocaleDriverContext
+): string | null => {
+  if (!locale) {
+    return null;
+  }
+
+  if (!context.acceptedLocales?.length) {
+    return locale;
+  }
+
+  return findSupportedLocale(locale, context.acceptedLocales);
+};
+
 export const PathLocaleDriver: LocaleDriver<NextLocaleDriverContext> = {
   name: 'path',
   getLocale: (context) => {
-    const pathInfo = extractRecognizedLocalePrefix(context.pathname);
+    const pathInfo = extractPathLocaleInfo(context.pathname, context);
     if (!isPathRoutingEnabled(pathInfo.unlocalizedPathname, context.pathRouting)) {
       return null;
     }
 
-    return pathInfo.locale;
+    return resolveAcceptedPathLocale(pathInfo.locale, context);
   },
   setLocale: async (locale, context) => {
     const normalizedPathname = normalizePathname(context.pathname);
-    const pathInfo = extractRecognizedLocalePrefix(normalizedPathname);
+    const pathInfo = extractPathLocaleInfo(normalizedPathname, context);
     if (!isPathRoutingEnabled(pathInfo.unlocalizedPathname, context.pathRouting)) {
       return;
     }
@@ -55,7 +84,7 @@ export const PathLocaleDriver: LocaleDriver<NextLocaleDriverContext> = {
       await Promise.all(tasks);
     }
   },
-  handleListeners: (_context, sync) => {
+  handleListeners: (context, sync) => {
     if (typeof window === 'undefined') {
       return;
     }
@@ -83,8 +112,8 @@ export const PathLocaleDriver: LocaleDriver<NextLocaleDriverContext> = {
 
     const maybeSyncFromPathname = (pathname: string) => {
       const normalizedPathname = normalizePathname(pathname);
-      const pathInfo = extractRecognizedLocalePrefix(normalizedPathname);
-      if (!isPathRoutingEnabled(pathInfo.unlocalizedPathname, _context.pathRouting)) {
+      const pathInfo = extractPathLocaleInfo(normalizedPathname, context);
+      if (!isPathRoutingEnabled(pathInfo.unlocalizedPathname, context.pathRouting)) {
         return;
       }
 
