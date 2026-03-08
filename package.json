@@ -6,10 +6,6 @@
   "module": "./next.ts",
   "types": "./next.ts",
   "exports": {
-    ".": {
-      "types": "./next.ts",
-      "import": "./next.ts"
-    },
     "./client": {
       "types": "./client.ts",
       "import": "./client.ts"
@@ -19,6 +15,10 @@
       "import": "./next-client.ts"
     },
     "./server": {
+      "types": "./next.ts",
+      "import": "./next.ts"
+    },
+    "./rsc": {
       "types": "./server.tsx",
       "import": "./server.tsx"
     }
