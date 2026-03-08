@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../server', () => ({
+vi.mock('../rsc', () => ({
   Ways: vi.fn(async (props: { children: unknown }) => props.children),
   generateWaysMetadata: vi.fn(async () => ({
     alternates: { canonical: 'https://example.com/es-ES/docs' },
@@ -34,7 +34,7 @@ describe('next init', () => {
 
   it('binds htmlAttrs to init locale options', async () => {
     const { init } = await import('../next');
-    const serverModule = await import('../server');
+    const serverModule = await import('../rsc');
 
     const ways = init({
       apiKey: 'test-api-key',
@@ -57,7 +57,7 @@ describe('next init', () => {
 
   it('merges app metadata with generated ways metadata', async () => {
     const { init } = await import('../next');
-    const serverModule = await import('../server');
+    const serverModule = await import('../rsc');
 
     const ways = init({
       apiKey: 'test-api-key',

@@ -15,12 +15,12 @@
       "import": "./next-client.ts"
     },
     "./server": {
-      "types": "./next.ts",
-      "import": "./next.ts"
+      "types": "./server.ts",
+      "import": "./server.ts"
     },
     "./rsc": {
-      "types": "./server.tsx",
-      "import": "./server.tsx"
+      "types": "./rsc.tsx",
+      "import": "./rsc.tsx"
     }
   },
   "scripts": {

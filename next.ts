@@ -4,7 +4,7 @@ import {
   Ways as ServerWays,
   generateWaysMetadata as generateWaysMetadataBase,
   getWaysHtmlAttrs as getWaysHtmlAttrsBase,
-} from './server';
+} from './rsc';
 import type { WaysProps, WaysRootProps } from '@18ways/react';
 import { LocalePathSync } from './next-locale-sync';
 import { LocaleRuntimeConfigProvider } from './next-locale-runtime';
