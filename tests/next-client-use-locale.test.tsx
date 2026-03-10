@@ -54,7 +54,11 @@ describe('useLocale', () => {
     router.replace.mockReset();
     router.refresh.mockReset();
     setCurrentLocale.mockReset();
-    document.cookie = '18ways-locale=; Max-Age=0; Path=/';
+    document.cookie = '18ways_locale=; Max-Age=0; Path=/';
+    document.cookie =
+      '18ways_cookie_consent=' +
+      encodeURIComponent(JSON.stringify({ categories: ['necessary', 'functional'] })) +
+      '; Path=/';
     window.__18WAYS_ACCEPTED_LOCALES__ = ['en-GB', 'es-ES'];
   });
 
@@ -64,7 +68,7 @@ describe('useLocale', () => {
     render(<LocaleChangerWithDefaults />);
     fireEvent.click(screen.getByRole('button', { name: 'Switch' }));
 
-    expect(document.cookie).toContain('18ways-locale=es-ES');
+    expect(document.cookie).toContain('18ways_locale=es-ES');
     await waitFor(() => {
       expect(setCurrentLocale).toHaveBeenCalledWith('es-ES');
       expect(router.refresh).toHaveBeenCalledTimes(1);
@@ -79,7 +83,7 @@ describe('useLocale', () => {
     render(<LocaleChanger />);
     fireEvent.click(screen.getByRole('button', { name: 'Switch' }));
 
-    expect(document.cookie).toContain('18ways-locale=es-ES');
+    expect(document.cookie).toContain('18ways_locale=es-ES');
     await waitFor(() => {
       expect(router.replace).toHaveBeenCalledWith('/es-ES/docs?foo=1');
       expect(router.refresh).not.toHaveBeenCalled();

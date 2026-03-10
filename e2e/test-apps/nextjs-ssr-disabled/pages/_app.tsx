@@ -12,7 +12,7 @@ function getCookie(name: string): string | null {
 
 function MyApp({ Component, pageProps }: AppProps) {
   const [locale, setLocale] = useState(() => {
-    const savedLocale = getCookie('18ways-locale');
+    const savedLocale = getCookie('18ways_locale');
     return savedLocale || 'en-US';
   });
 

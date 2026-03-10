@@ -9,7 +9,7 @@ export default function ClientHome({ locale, setLocale }: HomeProps) {
   const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newLocale = e.target.value;
     setLocale(newLocale);
-    document.cookie = `18ways-locale=${newLocale}; path=/`;
+    document.cookie = `18ways_locale=${newLocale}; path=/`;
   };
 
   return (

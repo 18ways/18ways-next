@@ -45,7 +45,7 @@ function MyApp({ Component, pageProps, initialLocale }: MyAppProps) {
 MyApp.getInitialProps = async (appContext: AppContext) => {
   const { ctx } = appContext;
   const cookieHeader = ctx.req?.headers.cookie;
-  const initialLocale = parseCookieHeader(cookieHeader, '18ways-locale') || 'en-US';
+  const initialLocale = parseCookieHeader(cookieHeader, '18ways_locale') || 'en-US';
 
   return {
     initialLocale,

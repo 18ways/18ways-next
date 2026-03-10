@@ -10,7 +10,7 @@ vi.mock('../rsc', () => ({
     lang: 'es-ES',
     dir: 'ltr',
   })),
-  WAYS_LOCALE_COOKIE_NAME: '18ways-locale',
+  WAYS_LOCALE_COOKIE_NAME: '18ways_locale',
 }));
 
 vi.mock('@18ways/core/common', () => ({

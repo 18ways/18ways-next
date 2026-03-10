@@ -32,7 +32,7 @@ const baseTest = base.extend<{}, { context: ExtendedContext }>({
     extendedContext.setWaysLocale = async (locale: string) => {
       await context.addCookies([
         {
-          name: '18ways-locale',
+          name: '18ways_locale',
           value: locale,
           domain: 'localhost',
           path: '/',

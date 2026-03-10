@@ -324,8 +324,8 @@ export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
     }
 
     const resolvedLocale =
-      (waysMetadata?.other && typeof waysMetadata.other['18ways-locale'] === 'string'
-        ? waysMetadata.other['18ways-locale']
+      (waysMetadata?.other && typeof waysMetadata.other['18ways_locale'] === 'string'
+        ? waysMetadata.other['18ways_locale']
         : undefined) ||
       localeProps.locale ||
       localeProps.baseLocale ||

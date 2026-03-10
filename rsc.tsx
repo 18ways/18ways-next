@@ -138,8 +138,8 @@ export const generateWaysMetadata = async (
         .map(localeToOpenGraphLocale),
     },
     other: {
-      '18ways-locale': locale,
-      '18ways-locale-cookie': cookieStore.get(WAYS_LOCALE_COOKIE_NAME)?.value || '',
+      '18ways_locale': locale,
+      '18ways_locale_cookie': cookieStore.get(WAYS_LOCALE_COOKIE_NAME)?.value || '',
     },
   };
 };
