@@ -106,6 +106,25 @@ describe('resolveWaysMiddleware locale engine', () => {
     expect(resolution.action).toBe('rewrite');
   });
 
+  it('redirects unsupported locale prefixes to the closest accepted fallback', async () => {
+    const resolution = await resolveWaysMiddleware(
+      createRequest({
+        pathname: '/en-US/docs',
+      }),
+      {
+        baseLocale: 'en-GB',
+        acceptedLocales: ['en-GB'],
+        supportedLocales: ['en-GB'],
+      }
+    );
+
+    expect(resolution.locale).toBe('en-GB');
+    expect(resolution.action).toBe('redirect');
+    if (resolution.action === 'redirect') {
+      expect(resolution.redirectPathname).toBe('/en-GB/docs');
+    }
+  });
+
   it('uses package defaults to disable path driver reads/writes on dashboard routes', async () => {
     const resolution = await resolveWaysMiddleware(
       createRequest({

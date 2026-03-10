@@ -267,6 +267,10 @@ export const useLocale = (
             return '';
           }
 
+          if (recognized === context.baseLocale) {
+            return recognized;
+          }
+
           if (!acceptedLocales.length) {
             return recognized;
           }

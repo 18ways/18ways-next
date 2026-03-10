@@ -16,6 +16,7 @@ import {
   WAYS_PATHNAME_HEADER_NAME,
   WAYS_LOCALIZED_PATHNAME_HEADER_NAME,
   WaysPathRoutingConfig,
+  fetchAcceptedLocales,
   normalizePathname,
   recognizeLocale,
   resolveOrigin,
@@ -290,14 +291,14 @@ const resolveMetadataInput = async (params: {
 export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
   const { pathRouting, ...waysRootOptions } = options;
   const effectivePathRouting = pathRouting || DEFAULT_WAYS_PATH_ROUTING;
-  const defaultAcceptedLocales = waysRootOptions.acceptedLocales || [...SUPPORTED_LOCALES];
+  const defaultAcceptedLocales = waysRootOptions.acceptedLocales;
   const defaultMiddlewareOptions = createWaysMiddlewareOptions({
     baseLocale: waysRootOptions.baseLocale,
     pathRouting: effectivePathRouting,
     acceptedLocales: defaultAcceptedLocales,
     supportedLocales: defaultAcceptedLocales,
   });
-  const rootProps = { ...waysRootOptions, acceptedLocales: defaultAcceptedLocales };
+  const rootProps = { ...waysRootOptions };
   const localeProps: Partial<Pick<WaysRootProps, 'locale' | 'baseLocale'>> = {
     locale: waysRootOptions.locale,
     baseLocale: waysRootOptions.baseLocale,
@@ -365,8 +366,23 @@ export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
     request: NextRequest,
     middlewareOptions?: { syncMode?: LocaleSyncMode }
   ) => {
+    const resolvedBaseLocale = recognizeLocale(waysRootOptions.baseLocale) || 'en-GB';
+    const acceptedLocales =
+      defaultAcceptedLocales ||
+      (waysRootOptions.apiKey
+        ? await fetchAcceptedLocales(resolvedBaseLocale, {
+            origin: resolveOrigin({
+              host: request.headers.get('x-forwarded-host') || request.headers.get('host'),
+              forwardedProto: request.headers.get('x-forwarded-proto'),
+            }),
+            apiKey: waysRootOptions.apiKey,
+          })
+        : [...SUPPORTED_LOCALES]);
+
     return resolveWaysMiddlewareEdit(request, {
       ...defaultMiddlewareOptions,
+      acceptedLocales,
+      supportedLocales: acceptedLocales,
       syncMode: middlewareOptions?.syncMode,
     });
   };
