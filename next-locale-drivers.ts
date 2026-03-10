@@ -43,18 +43,18 @@ export const createNextLocaleEngine = <TContext extends NextLocaleDriverContext>
 }): LocaleEngine<TContext> => {
   const acceptedLocales = normalizeAcceptedLocales(options.acceptedLocales);
   const normalizedBaseLocale = recognizeLocale(options.baseLocale) || 'en-GB';
-  const effectiveBaseLocale =
-    (acceptedLocales.length
-      ? findSupportedLocale(normalizedBaseLocale, acceptedLocales) || acceptedLocales[0]
-      : normalizedBaseLocale) || 'en-GB';
 
   return new LocaleEngine<TContext>({
-    baseLocale: effectiveBaseLocale,
+    baseLocale: normalizedBaseLocale,
     drivers: createNextLocaleDrivers<TContext>(),
     normalizeLocale: (locale) => {
       const recognized = recognizeLocale(locale);
       if (!recognized) {
         return '';
+      }
+
+      if (recognized === normalizedBaseLocale) {
+        return recognized;
       }
 
       if (!acceptedLocales.length) {

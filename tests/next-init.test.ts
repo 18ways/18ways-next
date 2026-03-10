@@ -26,6 +26,17 @@ vi.mock('@18ways/core/common', () => ({
   })),
 }));
 
+vi.mock('@18ways/core/i18n-shared', async () => {
+  const actual = await vi.importActual<typeof import('@18ways/core/i18n-shared')>(
+    '@18ways/core/i18n-shared'
+  );
+
+  return {
+    ...actual,
+    fetchAcceptedLocales: vi.fn(async () => ['en-GB']),
+  };
+});
+
 describe('next init', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -167,5 +178,43 @@ describe('next init', () => {
     expect(options.baseLocale).toBe('en-GB');
     expect(options.pathRouting?.exclude).toContain('/dashboard');
     expect(options.pathRouting?.exclude).not.toContain('/sitemap.xml');
+  });
+
+  it('resolves accepted locales inside init middleware handling', async () => {
+    const { init } = await import('../next');
+    const { fetchAcceptedLocales } = await import('@18ways/core/i18n-shared');
+    const { NextResponse } = await import('next/server');
+
+    const ways = init({
+      apiKey: 'test-api-key',
+      baseLocale: 'en-GB',
+      apiUrl: 'https://example.com/api',
+    });
+
+    const headers = new Headers({
+      'accept-language': 'en-US,en;q=0.9',
+      host: '18ways.com',
+      'x-forwarded-proto': 'https',
+    });
+
+    const edit = await ways.resolveWaysMiddlewareEdit({
+      headers,
+      cookies: {
+        get: () => undefined,
+      },
+      nextUrl: {
+        pathname: '/docs',
+        origin: 'https://18ways.com',
+        clone: () => new URL('https://18ways.com/docs'),
+      },
+    } as any);
+
+    const response = edit(() => NextResponse.next());
+
+    expect(fetchAcceptedLocales).toHaveBeenCalledWith('en-GB', {
+      origin: 'https://18ways.com',
+      apiKey: 'test-api-key',
+    });
+    expect(response.headers.get('location')).toBe('https://18ways.com/en-GB/docs');
   });
 });
