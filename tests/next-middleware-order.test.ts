@@ -1,20 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { resolveWaysMiddleware } from '../next';
-import { WAYS_LOCALE_COOKIE_NAME, WAYS_SESSION_LOCALE_COOKIE_NAME } from '@18ways/core/i18n-shared';
+import { WAYS_LOCALE_COOKIE_NAME } from '@18ways/core/i18n-shared';
 
 type RequestInput = {
   pathname: string;
   acceptLanguage?: string;
   preferenceCookieLocale?: string;
-  sessionCookieLocale?: string;
 };
 
-const createRequest = ({
-  pathname,
-  acceptLanguage,
-  preferenceCookieLocale,
-  sessionCookieLocale,
-}: RequestInput) => {
+const createRequest = ({ pathname, acceptLanguage, preferenceCookieLocale }: RequestInput) => {
   const headers = new Headers();
   if (acceptLanguage) {
     headers.set('accept-language', acceptLanguage);
@@ -26,10 +20,6 @@ const createRequest = ({
       get: (name: string) => {
         if (name === WAYS_LOCALE_COOKIE_NAME && preferenceCookieLocale) {
           return { name, value: preferenceCookieLocale };
-        }
-
-        if (name === WAYS_SESSION_LOCALE_COOKIE_NAME && sessionCookieLocale) {
-          return { name, value: sessionCookieLocale };
         }
 
         return undefined;
@@ -44,7 +34,7 @@ const createRequest = ({
 };
 
 describe('resolveWaysMiddleware locale engine', () => {
-  it('uses driver order: session/cookie > path > browser > base', async () => {
+  it('uses driver order: cookie > path > browser > base', async () => {
     const fromBrowser = await resolveWaysMiddleware(
       createRequest({
         pathname: '/docs',
@@ -64,14 +54,6 @@ describe('resolveWaysMiddleware locale engine', () => {
         preferenceCookieLocale: 'de-DE',
       })
     );
-    const fromSessionCookie = await resolveWaysMiddleware(
-      createRequest({
-        pathname: '/fr-FR/docs',
-        acceptLanguage: 'es-ES,es;q=0.9,en;q=0.8',
-        sessionCookieLocale: 'it-IT',
-        preferenceCookieLocale: 'de-DE',
-      })
-    );
 
     expect(fromBrowser.locale).toBe('es-ES');
     expect(fromBrowser.action).toBe('redirect');
@@ -86,12 +68,6 @@ describe('resolveWaysMiddleware locale engine', () => {
     expect(fromPreferenceCookie.action).toBe('redirect');
     if (fromPreferenceCookie.action === 'redirect') {
       expect(fromPreferenceCookie.redirectPathname).toBe('/de-DE/docs');
-    }
-
-    expect(fromSessionCookie.locale).toBe('it-IT');
-    expect(fromSessionCookie.action).toBe('redirect');
-    if (fromSessionCookie.action === 'redirect') {
-      expect(fromSessionCookie.redirectPathname).toBe('/it-IT/docs');
     }
   });
 
@@ -110,7 +86,7 @@ describe('resolveWaysMiddleware locale engine', () => {
     const resolution = await resolveWaysMiddleware(
       createRequest({
         pathname: '/fr-FR/dashboard',
-        sessionCookieLocale: 'en-GB',
+        preferenceCookieLocale: 'en-GB',
       })
     );
 
@@ -135,17 +111,30 @@ describe('resolveWaysMiddleware locale engine', () => {
     }
   });
 
-  it('syncs both session and preference cookies to the resolved locale', async () => {
+  it('syncs the locale cookie to the resolved locale', async () => {
     const resolution = await resolveWaysMiddleware(
       createRequest({
         pathname: '/fr-FR/docs',
       })
     );
 
-    const cookieNames = resolution.cookieUpdates.map((cookie) => cookie.name).sort();
-    expect(cookieNames).toEqual([WAYS_LOCALE_COOKIE_NAME, WAYS_SESSION_LOCALE_COOKIE_NAME]);
+    const cookieNames = resolution.cookieUpdates.map((cookie) => cookie.name);
+    expect(cookieNames).toEqual([WAYS_LOCALE_COOKIE_NAME]);
     expect(resolution.cookieUpdates.every((cookie) => cookie.value === resolution.locale)).toBe(
       true
     );
+  });
+
+  it('skips locale cookie updates when persistence is disabled', async () => {
+    const resolution = await resolveWaysMiddleware(
+      createRequest({
+        pathname: '/fr-FR/docs',
+      }),
+      {
+        persistLocaleCookie: false,
+      }
+    );
+
+    expect(resolution.cookieUpdates).toEqual([]);
   });
 });

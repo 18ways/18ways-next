@@ -59,7 +59,7 @@ export type WaysNextInitResult = {
   ) => Promise<Record<string, any>>;
   resolveWaysMiddlewareEdit: (
     request: NextRequest,
-    options?: { syncMode?: LocaleSyncMode }
+    options?: { syncMode?: LocaleSyncMode; persistLocaleCookie?: boolean }
   ) => Promise<(createResponse: WaysMiddlewareResponseFactory) => NextResponse>;
 };
 
@@ -423,6 +423,7 @@ export type WaysMiddlewareOptions = {
   syncMode?: LocaleSyncMode;
   acceptedLocales?: string[];
   supportedLocales?: string[];
+  persistLocaleCookie?: boolean;
 };
 
 export type WaysMiddlewareResolution =
@@ -470,6 +471,7 @@ export const createWaysMiddlewareOptions = (input: {
   syncMode?: LocaleSyncMode;
   acceptedLocales?: string[];
   supportedLocales?: string[];
+  persistLocaleCookie?: boolean;
 }): WaysMiddlewareOptions => {
   return {
     baseLocale: input.baseLocale,
@@ -477,6 +479,7 @@ export const createWaysMiddlewareOptions = (input: {
     syncMode: input.syncMode,
     acceptedLocales: input.acceptedLocales,
     supportedLocales: input.supportedLocales,
+    persistLocaleCookie: input.persistLocaleCookie,
   };
 };
 
@@ -522,6 +525,7 @@ const createWaysMiddlewareContext = (input: {
   pathRouting: WaysPathRoutingConfig;
   supportedLocales?: string[];
   acceptedLocales?: string[];
+  persistLocaleCookie?: boolean;
 }): {
   context: WaysMiddlewareContext;
   state: WaysMiddlewareState;
@@ -540,6 +544,7 @@ const createWaysMiddlewareContext = (input: {
     supportedLocales: input.supportedLocales,
     acceptedLocales: input.acceptedLocales,
     pathRouting: input.pathRouting,
+    persistLocaleCookie: input.persistLocaleCookie,
     readCookie: (cookieName) => input.request.cookies.get(cookieName)?.value || null,
     writeCookie: (cookieName, locale, cookieOptions) => {
       writeCookieUpdate(state, cookieName, locale, cookieOptions);
@@ -580,6 +585,7 @@ export const resolveWaysMiddleware = async (
     pathRouting,
     supportedLocales,
     acceptedLocales,
+    persistLocaleCookie: options?.persistLocaleCookie,
   });
   const engine = createNextLocaleEngine<WaysMiddlewareContext>({
     baseLocale,

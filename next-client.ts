@@ -161,10 +161,12 @@ export type SetLocaleOptions = {
   history?: 'replace' | 'push';
   preserveSearch?: boolean;
   preserveHash?: boolean;
+  persistLocaleCookie?: boolean;
 };
 
 export type UseLocaleOptions = {
   pathRouting?: WaysPathRoutingConfig;
+  persistLocaleCookie?: boolean;
 };
 
 type ClientLocaleEngineContext = NextLocaleDriverContext;
@@ -174,6 +176,7 @@ const createClientLocaleEngineContext = (input: {
   currentLocale: string;
   acceptedLocales?: string[];
   pathRouting?: WaysPathRoutingConfig;
+  persistLocaleCookie?: boolean;
   setCurrentLocale: (locale: string) => void;
   navigateToPathname?: (pathname: string) => void | Promise<void>;
   onLocaleSynced?: () => void | Promise<void>;
@@ -194,6 +197,7 @@ const createClientLocaleEngineContext = (input: {
       baseLocale: recognizeLocale(input.currentLocale) || 'en-GB',
       acceptedLocales: input.acceptedLocales,
       pathRouting: input.pathRouting,
+      persistLocaleCookie: input.persistLocaleCookie,
       currentLocale: input.currentLocale,
       setCurrentLocale: input.setCurrentLocale,
       navigateToPathname,
@@ -239,11 +243,16 @@ export const useLocale = (
           : typeof window !== 'undefined'
             ? window.location.hash
             : '';
+      const persistLocaleCookie =
+        typeof setLocaleOptions?.persistLocaleCookie === 'boolean'
+          ? setLocaleOptions.persistLocaleCookie
+          : options?.persistLocaleCookie;
       const { context } = createClientLocaleEngineContext({
         pathname: normalizedPathname,
         currentLocale: locale,
         acceptedLocales,
         pathRouting: effectivePathRouting,
+        persistLocaleCookie,
         setCurrentLocale,
         navigateToPathname: (nextLocalizedPathname) => {
           const href = `${nextLocalizedPathname}${search ? `?${search}` : ''}${hash}`;

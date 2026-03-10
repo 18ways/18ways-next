@@ -104,4 +104,21 @@ describe('useLocale', () => {
       expect(router.refresh).not.toHaveBeenCalled();
     });
   });
+
+  it('skips locale cookie writes when persistence is disabled for the action', async () => {
+    pathname = '/dashboard/organizations';
+
+    const LocaleChangerWithoutPersistence = () => {
+      const { setLocale } = useLocale();
+
+      return (
+        <button onClick={() => setLocale('es-ES', { persistLocaleCookie: false })}>Switch</button>
+      );
+    };
+
+    render(<LocaleChangerWithoutPersistence />);
+    fireEvent.click(screen.getByRole('button', { name: 'Switch' }));
+
+    expect(document.cookie).not.toContain('18ways_locale=es-ES');
+  });
 });

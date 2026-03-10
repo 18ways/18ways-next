@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SessionCookieDriver } from '../drivers/session-cookie-driver';
-import { WAYS_LOCALE_COOKIE_NAME, WAYS_SESSION_LOCALE_COOKIE_NAME } from '@18ways/core/i18n-shared';
+import { WAYS_LOCALE_COOKIE_NAME } from '@18ways/core/i18n-shared';
 
 describe('SessionCookieDriver', () => {
   it('continues locale sync when cookie writes are blocked', async () => {
@@ -30,38 +30,45 @@ describe('SessionCookieDriver', () => {
     expect(locale).toBe('fr-FR');
   });
 
-  it('does not write locale cookies when functional consent is not granted', async () => {
+  it('writes locale cookies by default', async () => {
     const writeCookie = vi.fn();
 
     await SessionCookieDriver.setLocale('es-ES', {
       pathname: '/docs',
       baseLocale: 'en-GB',
-      readCookie: () => null,
+      writeCookie,
+    });
+
+    expect(writeCookie).toHaveBeenCalledTimes(1);
+    expect(writeCookie).toHaveBeenCalledWith(WAYS_LOCALE_COOKIE_NAME, 'es-ES', expect.any(Object));
+  });
+
+  it('does not write locale cookies when persistence is disabled', async () => {
+    const writeCookie = vi.fn();
+
+    await SessionCookieDriver.setLocale('es-ES', {
+      pathname: '/docs',
+      baseLocale: 'en-GB',
+      persistLocaleCookie: false,
       writeCookie,
     });
 
     expect(writeCookie).not.toHaveBeenCalled();
   });
 
-  it('writes locale cookies when functional consent is granted', async () => {
+  it('writes the persistent locale cookie with cookie options', async () => {
     const writeCookie = vi.fn();
-    const consentValue = JSON.stringify({
-      categories: ['necessary', 'functional'],
-    });
 
     await SessionCookieDriver.setLocale('es-ES', {
       pathname: '/docs',
       baseLocale: 'en-GB',
-      readCookie: (cookieName) => (cookieName === '18ways_cookie_consent' ? consentValue : null),
       writeCookie,
     });
 
-    expect(writeCookie).toHaveBeenCalledTimes(2);
-    expect(writeCookie).toHaveBeenCalledWith(
-      WAYS_SESSION_LOCALE_COOKIE_NAME,
-      'es-ES',
-      expect.any(Object)
-    );
-    expect(writeCookie).toHaveBeenCalledWith(WAYS_LOCALE_COOKIE_NAME, 'es-ES', expect.any(Object));
+    expect(writeCookie).toHaveBeenCalledWith(WAYS_LOCALE_COOKIE_NAME, 'es-ES', {
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: 'lax',
+      path: '/',
+    });
   });
 });

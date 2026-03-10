@@ -22,6 +22,7 @@ export type NextLocaleDriverContext = {
   supportedLocales?: string[];
   acceptedLocales?: string[];
   pathRouting?: WaysPathRoutingConfig;
+  persistLocaleCookie?: boolean;
   currentLocale?: string;
   readCookie?: (cookieName: string) => string | null | undefined;
   writeCookie?: (

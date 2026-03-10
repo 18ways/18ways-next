@@ -6,7 +6,6 @@ import type { WaysProps, WaysRootProps } from '@18ways/react';
 import {
   DEFAULT_WAYS_PATH_ROUTING,
   WAYS_LOCALE_COOKIE_NAME,
-  WAYS_SESSION_LOCALE_COOKIE_NAME,
   WAYS_PATHNAME_HEADER_NAME,
   WAYS_LOCALIZED_PATHNAME_HEADER_NAME,
   buildLocalizedPathname,
@@ -34,7 +33,6 @@ const resolveLocaleFromRequest = async (
   const fallbackLocale =
     props?.locale ||
     props?.baseLocale ||
-    cookieStore.get(WAYS_SESSION_LOCALE_COOKIE_NAME)?.value ||
     cookieStore.get(WAYS_LOCALE_COOKIE_NAME)?.value ||
     headerStore.get('accept-language')?.split(',')[0] ||
     'en-GB';
