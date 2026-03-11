@@ -101,6 +101,25 @@ describe('resolveWaysMiddleware locale engine', () => {
     }
   });
 
+  it('preserves recognizable route segments when redirecting to the resolved locale', async () => {
+    const resolution = await resolveWaysMiddleware(
+      createRequest({
+        pathname: '/pricing',
+      }),
+      {
+        baseLocale: 'en-GB',
+        acceptedLocales: ['en-GB'],
+        supportedLocales: ['en-GB'],
+      }
+    );
+
+    expect(resolution.locale).toBe('en-GB');
+    expect(resolution.action).toBe('redirect');
+    if (resolution.action === 'redirect') {
+      expect(resolution.redirectPathname).toBe('/en-GB/pricing');
+    }
+  });
+
   it('uses package defaults to disable path driver reads/writes on dashboard routes', async () => {
     const resolution = await resolveWaysMiddleware(
       createRequest({
