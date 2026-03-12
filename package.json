@@ -51,7 +51,7 @@
     "typescript": "^5.6.2",
     "vitest": "^3.2.4"
   },
-  "license": "ISC",
+  "license": "MIT",
   "description": "Next.js adapter for 18ways",
   "packageManager": "bun@1.3.8"
 }
