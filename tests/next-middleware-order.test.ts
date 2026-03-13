@@ -8,6 +8,10 @@ type RequestInput = {
   preferenceCookieLocale?: string;
 };
 
+const PATH_ROUTING = {
+  exclude: ['/dashboard'],
+};
+
 const createRequest = ({ pathname, acceptLanguage, preferenceCookieLocale }: RequestInput) => {
   const headers = new Headers();
   if (acceptLanguage) {
@@ -39,20 +43,23 @@ describe('resolveWaysMiddleware locale engine', () => {
       createRequest({
         pathname: '/docs',
         acceptLanguage: 'es-ES,es;q=0.9,en;q=0.8',
-      })
+      }),
+      { pathRouting: PATH_ROUTING }
     );
     const fromPath = await resolveWaysMiddleware(
       createRequest({
         pathname: '/fr-FR/docs',
         acceptLanguage: 'es-ES,es;q=0.9,en;q=0.8',
-      })
+      }),
+      { pathRouting: PATH_ROUTING }
     );
     const fromPreferenceCookie = await resolveWaysMiddleware(
       createRequest({
         pathname: '/fr-FR/docs',
         acceptLanguage: 'es-ES,es;q=0.9,en;q=0.8',
         preferenceCookieLocale: 'de-DE',
-      })
+      }),
+      { pathRouting: PATH_ROUTING }
     );
 
     expect(fromBrowser.locale).toBe('es-ES');
@@ -75,7 +82,8 @@ describe('resolveWaysMiddleware locale engine', () => {
     const resolution = await resolveWaysMiddleware(
       createRequest({
         pathname: '/ja-JP/docs',
-      })
+      }),
+      { pathRouting: PATH_ROUTING }
     );
 
     expect(resolution.locale).toBe('ja-JP');
@@ -90,6 +98,7 @@ describe('resolveWaysMiddleware locale engine', () => {
       {
         baseLocale: 'en-GB',
         acceptedLocales: ['en-GB'],
+        pathRouting: PATH_ROUTING,
         supportedLocales: ['en-GB'],
       }
     );
@@ -109,6 +118,7 @@ describe('resolveWaysMiddleware locale engine', () => {
       {
         baseLocale: 'en-GB',
         acceptedLocales: ['en-GB'],
+        pathRouting: PATH_ROUTING,
         supportedLocales: ['en-GB'],
       }
     );
@@ -120,7 +130,7 @@ describe('resolveWaysMiddleware locale engine', () => {
     }
   });
 
-  it('uses package defaults to disable path driver reads/writes on dashboard routes', async () => {
+  it('keeps path routing disabled when no pathRouting config is provided', async () => {
     const resolution = await resolveWaysMiddleware(
       createRequest({
         pathname: '/fr-FR/dashboard',
@@ -139,7 +149,8 @@ describe('resolveWaysMiddleware locale engine', () => {
       createRequest({
         pathname: '/sitemap.xml',
         acceptLanguage: 'es-ES,es;q=0.9',
-      })
+      }),
+      { pathRouting: PATH_ROUTING }
     );
 
     expect(resolution.locale).toBe('es-ES');
@@ -153,7 +164,8 @@ describe('resolveWaysMiddleware locale engine', () => {
     const resolution = await resolveWaysMiddleware(
       createRequest({
         pathname: '/fr-FR/docs',
-      })
+      }),
+      { pathRouting: PATH_ROUTING }
     );
 
     const cookieNames = resolution.cookieUpdates.map((cookie) => cookie.name);
@@ -169,6 +181,7 @@ describe('resolveWaysMiddleware locale engine', () => {
         pathname: '/fr-FR/docs',
       }),
       {
+        pathRouting: PATH_ROUTING,
         persistLocaleCookie: false,
       }
     );

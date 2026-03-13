@@ -11,12 +11,17 @@ vi.mock('next/navigation', () => ({
 
 import { localizePathname } from '../next-client';
 
+const PATH_ROUTING = {
+  exclude: ['/dashboard'],
+};
+
 describe('next-client pathname localization', () => {
   it('replaces the current locale prefix when switching locales', () => {
     expect(
       localizePathname('/en-GB/docs/getting-started', 'ja-JP', {
         acceptedLocales: ['en-GB', 'ja-JP'],
         currentLocale: 'en-GB',
+        pathRouting: PATH_ROUTING,
       })
     ).toBe('/ja-JP/docs/getting-started');
   });
@@ -26,6 +31,7 @@ describe('next-client pathname localization', () => {
       localizePathname('/ja-JP', 'ja-JP', {
         acceptedLocales: ['en-GB'],
         currentLocale: 'en-GB',
+        pathRouting: PATH_ROUTING,
       })
     ).toBe('/ja-JP');
   });
@@ -35,6 +41,7 @@ describe('next-client pathname localization', () => {
       localizePathname('/japan/travel', 'ja-JP', {
         acceptedLocales: ['en-GB'],
         currentLocale: 'en-GB',
+        pathRouting: PATH_ROUTING,
       })
     ).toBe('/ja-JP/japan/travel');
   });
@@ -51,12 +58,22 @@ describe('next-client pathname localization', () => {
     ).toBe('/dashboard/organizations');
   });
 
-  it('keeps dashboard routes unlocalized by default', () => {
+  it('keeps robots.txt unlocalized via the built-in auto-exclude list', () => {
     expect(
-      localizePathname('/dashboard/organizations', 'ja-JP', {
+      localizePathname('/robots.txt', 'ja-JP', {
+        acceptedLocales: ['en-GB', 'ja-JP'],
+        currentLocale: 'en-GB',
+        pathRouting: PATH_ROUTING,
+      })
+    ).toBe('/robots.txt');
+  });
+
+  it('leaves paths unchanged when path routing is omitted', () => {
+    expect(
+      localizePathname('/docs/getting-started', 'ja-JP', {
         acceptedLocales: ['en-GB', 'ja-JP'],
         currentLocale: 'en-GB',
       })
-    ).toBe('/dashboard/organizations');
+    ).toBe('/docs/getting-started');
   });
 });

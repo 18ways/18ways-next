@@ -5,7 +5,6 @@ import { useCallback } from 'react';
 import { useCurrentLocale, useSetCurrentLocale } from '@18ways/react';
 import { LocaleEngine } from '@18ways/core/locale-engine';
 import {
-  DEFAULT_WAYS_PATH_ROUTING,
   WaysPathRoutingConfig,
   buildLocalizedPathname,
   canonicalizeLocale,
@@ -24,7 +23,7 @@ const resolvePathRouting = (
   explicitPathRouting: WaysPathRoutingConfig | undefined,
   runtimePathRouting: WaysPathRoutingConfig | undefined
 ): WaysPathRoutingConfig | undefined => {
-  return explicitPathRouting || runtimePathRouting || DEFAULT_WAYS_PATH_ROUTING;
+  return explicitPathRouting || runtimePathRouting;
 };
 
 const readAcceptedLocalesFromWindow = (): string[] => {
@@ -100,6 +99,11 @@ export const localizePathname = (
   }
 
   const normalizedPathname = normalizePathname(pathname);
+  const effectivePathRouting = options?.pathRouting;
+  if (!effectivePathRouting) {
+    return normalizedPathname;
+  }
+
   let basePathname = stripLocalePrefix(normalizedPathname, {
     locale: options?.currentLocale,
     acceptedLocales: options?.acceptedLocales,
@@ -111,7 +115,6 @@ export const localizePathname = (
     basePathname = stripLocalePrefix(normalizedPathname, { locale: recognizedLocale });
   }
 
-  const effectivePathRouting = options?.pathRouting || DEFAULT_WAYS_PATH_ROUTING;
   if (!isPathRoutingEnabled(basePathname, effectivePathRouting)) {
     return basePathname;
   }
@@ -126,6 +129,9 @@ export const useUnlocalizedPathname = (options?: {
   const runtimePathRouting = useLocaleRuntimePathRouting();
   const effectivePathRouting = resolvePathRouting(options?.pathRouting, runtimePathRouting);
   const normalizedPathname = normalizePathname(pathname || '/');
+  if (!effectivePathRouting) {
+    return normalizedPathname;
+  }
   const pathInfo = extractRecognizedLocalePrefix(normalizedPathname);
 
   if (!isPathRoutingEnabled(pathInfo.unlocalizedPathname, effectivePathRouting)) {
@@ -145,6 +151,10 @@ export const useLocalizedHref = (options?: {
   return useCallback(
     (href: string) => {
       if (!href.startsWith('/')) {
+        return href;
+      }
+
+      if (!effectivePathRouting) {
         return href;
       }
 

@@ -4,7 +4,6 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 import { useCurrentLocale, useSetCurrentLocale } from '@18ways/react';
 import {
-  DEFAULT_WAYS_PATH_ROUTING,
   WaysPathRoutingConfig,
   canonicalizeLocale,
   normalizePathname,
@@ -112,7 +111,11 @@ export const LocalePathSync = ({ pathRouting }: { pathRouting?: WaysPathRoutingC
   const setCurrentLocale = useSetCurrentLocale();
   const router = useRouter();
   const runtimePathRouting = useLocaleRuntimePathRouting();
-  const effectivePathRouting = pathRouting || runtimePathRouting || DEFAULT_WAYS_PATH_ROUTING;
+  const effectivePathRouting = pathRouting || runtimePathRouting;
+
+  if (!effectivePathRouting) {
+    return null;
+  }
 
   const localeRef = useRef(currentLocale);
   const acceptedLocalesRef = useRef(readAcceptedLocalesFromWindow());

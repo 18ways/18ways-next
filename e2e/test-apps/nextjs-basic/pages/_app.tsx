@@ -35,7 +35,7 @@ function MyApp({ Component, pageProps, initialLocale }: MyAppProps) {
       acceptedLocales={['en-US', 'ja-JP', 'es-ES']}
       context="app"
       fetcher={fetch}
-      apiUrl={process.env.NEXT_PUBLIC_18WAYS_API_URL}
+      _apiUrl={process.env.NEXT_PUBLIC_18WAYS_API_URL}
     >
       <Component {...pageProps} locale={locale} setLocale={setLocale} />
     </Ways>

@@ -39,6 +39,10 @@ const resolveAcceptedPathLocale = (
 export const PathLocaleDriver: LocaleDriver<NextLocaleDriverContext> = {
   name: 'path',
   getLocale: (context) => {
+    if (!context.pathRouting) {
+      return null;
+    }
+
     const pathInfo = extractPathLocaleInfo(context.pathname, context);
     if (!isPathRoutingEnabled(pathInfo.unlocalizedPathname, context.pathRouting)) {
       return null;
@@ -47,6 +51,10 @@ export const PathLocaleDriver: LocaleDriver<NextLocaleDriverContext> = {
     return resolveAcceptedPathLocale(pathInfo.locale, context);
   },
   setLocale: async (locale, context) => {
+    if (!context.pathRouting) {
+      return;
+    }
+
     const normalizedPathname = normalizePathname(context.pathname);
     const pathInfo = extractPathLocaleInfo(normalizedPathname, context);
     if (!isPathRoutingEnabled(pathInfo.unlocalizedPathname, context.pathRouting)) {
@@ -85,7 +93,7 @@ export const PathLocaleDriver: LocaleDriver<NextLocaleDriverContext> = {
     }
   },
   handleListeners: (context, sync) => {
-    if (typeof window === 'undefined') {
+    if (typeof window === 'undefined' || !context.pathRouting) {
       return;
     }
 

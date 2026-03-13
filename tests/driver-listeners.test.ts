@@ -3,6 +3,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PathLocaleDriver } from '../drivers/path-locale-driver';
 
+const PATH_ROUTING = {
+  exclude: ['/dashboard'],
+};
+
 describe('PathLocaleDriver listeners', () => {
   it('syncs to path locale when history changes to a localized path', async () => {
     const sync = vi.fn();
@@ -11,6 +15,7 @@ describe('PathLocaleDriver listeners', () => {
       {
         pathname: '/docs',
         baseLocale: 'en-GB',
+        pathRouting: PATH_ROUTING,
       },
       sync
     ) as () => void;
@@ -31,6 +36,7 @@ describe('PathLocaleDriver listeners', () => {
       {
         pathname: '/docs',
         baseLocale: 'en-GB',
+        pathRouting: PATH_ROUTING,
       },
       sync
     ) as () => void;
