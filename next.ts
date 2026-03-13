@@ -9,17 +9,11 @@ import type { WaysProps, WaysRootProps } from '@18ways/react';
 import { LocalePathSync } from './next-locale-sync';
 import { LocaleRuntimeConfigProvider } from './next-locale-runtime';
 import {
-  DEFAULT_WAYS_PATH_ROUTING,
   SUPPORTED_LOCALES,
   WAYS_LOCALE_COOKIE_NAME,
-  WAYS_LOCALE_HEADER_NAME,
-  WAYS_PATHNAME_HEADER_NAME,
-  WAYS_LOCALIZED_PATHNAME_HEADER_NAME,
   WaysPathRoutingConfig,
-  fetchAcceptedLocales,
   normalizePathname,
   recognizeLocale,
-  resolveOrigin,
 } from '@18ways/core/i18n-shared';
 import { LocaleSyncMode } from '@18ways/core/locale-engine';
 import {
@@ -29,6 +23,17 @@ import {
   type PathLocaleResolution,
 } from './next-locale-drivers';
 import { cloneDeepValue, deepMerged } from '@18ways/core/object-utils';
+import {
+  _composeRequestInitDecorators,
+  fetchAcceptedLocales,
+  resolveOrigin,
+} from '@18ways/core/common';
+import { createNextRequestInitDecorator } from './next-request-init';
+import {
+  WAYS_LOCALE_HEADER_NAME,
+  WAYS_LOCALIZED_PATHNAME_HEADER_NAME,
+  WAYS_PATHNAME_HEADER_NAME,
+} from './next-shared';
 
 export {
   generateWaysMetadataBase as generateWaysMetadata,
@@ -141,10 +146,14 @@ const buildMetadataTranslationMap = async (params: {
     const crypto = await import('@18ways/core/crypto');
     common.init({
       key: initOptions.apiKey,
-      apiUrl: initOptions.apiUrl,
+      apiUrl: initOptions._apiUrl,
       fetcher: initOptions.fetcher,
       cacheTtlSeconds: initOptions.cacheTtl,
       origin: initOptions.requestOrigin,
+      _requestInitDecorator: _composeRequestInitDecorators(
+        createNextRequestInitDecorator(),
+        initOptions._requestInitDecorator
+      ),
     });
 
     const textsHash = common.generateHashId([
@@ -290,21 +299,29 @@ const resolveMetadataInput = async (params: {
 
 export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
   const { pathRouting, ...waysRootOptions } = options;
-  const effectivePathRouting = pathRouting || DEFAULT_WAYS_PATH_ROUTING;
   const defaultAcceptedLocales = waysRootOptions.acceptedLocales;
   const defaultMiddlewareOptions = createWaysMiddlewareOptions({
     baseLocale: waysRootOptions.baseLocale,
-    pathRouting: effectivePathRouting,
+    pathRouting,
     acceptedLocales: defaultAcceptedLocales,
     supportedLocales: defaultAcceptedLocales,
   });
   const rootProps = { ...waysRootOptions };
-  const localeProps: Partial<Pick<WaysRootProps, 'locale' | 'baseLocale'>> = {
+  const localeProps: Partial<
+    Pick<WaysRootProps, 'locale' | 'baseLocale' | 'apiKey' | '_apiUrl'>
+  > & {
+    pathRouting?: WaysPathRoutingConfig;
+    _requestInitDecorator?: WaysRootProps['_requestInitDecorator'];
+  } = {
     locale: waysRootOptions.locale,
     baseLocale: waysRootOptions.baseLocale,
+    apiKey: waysRootOptions.apiKey,
+    _apiUrl: waysRootOptions._apiUrl,
+    _requestInitDecorator: waysRootOptions._requestInitDecorator,
+    pathRouting,
   };
   const WaysRoot = async ({ children }: WaysRootComponentProps): Promise<React.JSX.Element> => {
-    return Ways({ ...rootProps, pathRouting: effectivePathRouting, children });
+    return Ways({ ...rootProps, pathRouting, children });
   };
 
   const htmlAttrs = async (): Promise<Record<string, string>> => {
@@ -371,11 +388,16 @@ export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
       defaultAcceptedLocales ||
       (waysRootOptions.apiKey
         ? await fetchAcceptedLocales(resolvedBaseLocale, {
+            apiUrl: waysRootOptions._apiUrl,
             origin: resolveOrigin({
               host: request.headers.get('x-forwarded-host') || request.headers.get('host'),
               forwardedProto: request.headers.get('x-forwarded-proto'),
             }),
             apiKey: waysRootOptions.apiKey,
+            _requestInitDecorator: _composeRequestInitDecorators(
+              createNextRequestInitDecorator(),
+              waysRootOptions._requestInitDecorator
+            ),
           })
         : [...SUPPORTED_LOCALES]);
 
@@ -405,16 +427,18 @@ const LocalePathSyncComponent = LocalePathSync as React.ComponentType<{
 export function Ways(props: WaysNextProps): React.JSX.Element {
   if ('apiKey' in props) {
     const { pathRouting, ...serverWaysProps } = props;
-    const children = React.createElement(
-      LocaleRuntimeConfigProvider,
-      { pathRouting },
-      React.createElement(
-        React.Fragment,
-        null,
-        React.createElement(LocalePathSyncComponent, { pathRouting }),
-        props.children
-      )
-    );
+    const children = pathRouting
+      ? React.createElement(
+          LocaleRuntimeConfigProvider,
+          { pathRouting },
+          React.createElement(
+            React.Fragment,
+            null,
+            React.createElement(LocalePathSyncComponent, { pathRouting }),
+            props.children
+          )
+        )
+      : props.children;
 
     return React.createElement(ServerWays, serverWaysProps, children);
   }
@@ -491,7 +515,7 @@ export const createWaysMiddlewareOptions = (input: {
 }): WaysMiddlewareOptions => {
   return {
     baseLocale: input.baseLocale,
-    pathRouting: input.pathRouting || DEFAULT_WAYS_PATH_ROUTING,
+    pathRouting: input.pathRouting,
     syncMode: input.syncMode,
     acceptedLocales: input.acceptedLocales,
     supportedLocales: input.supportedLocales,
@@ -538,7 +562,7 @@ const applyPathLocaleResolution = (
 const createWaysMiddlewareContext = (input: {
   request: NextRequest;
   baseLocale: string;
-  pathRouting: WaysPathRoutingConfig;
+  pathRouting?: WaysPathRoutingConfig;
   supportedLocales?: string[];
   acceptedLocales?: string[];
   persistLocaleCookie?: boolean;
@@ -592,7 +616,7 @@ export const resolveWaysMiddleware = async (
   options?: WaysMiddlewareOptions
 ): Promise<WaysMiddlewareResolution> => {
   const baseLocale = recognizeLocale(options?.baseLocale) || 'en-GB';
-  const pathRouting = options?.pathRouting || DEFAULT_WAYS_PATH_ROUTING;
+  const pathRouting = options?.pathRouting;
   const supportedLocales = options?.supportedLocales;
   const acceptedLocales = options?.acceptedLocales;
   const { context, state } = createWaysMiddlewareContext({

@@ -27,6 +27,10 @@ vi.mock('@18ways/react', () => ({
 
 import { useLocale } from '../next-client';
 
+const PATH_ROUTING: WaysPathRoutingConfig = {
+  exclude: ['/dashboard'],
+};
+
 const LocaleChanger = ({ pathRouting }: { pathRouting?: WaysPathRoutingConfig }) => {
   const { setLocale } = useLocale({ pathRouting });
 
@@ -80,7 +84,7 @@ describe('useLocale', () => {
   it('uses localized path navigation when routing is enabled', async () => {
     pathname = '/en-GB/docs';
 
-    render(<LocaleChanger />);
+    render(<LocaleChanger pathRouting={PATH_ROUTING} />);
     fireEvent.click(screen.getByRole('button', { name: 'Switch' }));
 
     expect(document.cookie).toContain('18ways_locale=es-ES');

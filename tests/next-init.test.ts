@@ -13,26 +13,21 @@ vi.mock('../rsc', () => ({
   WAYS_LOCALE_COOKIE_NAME: '18ways_locale',
 }));
 
-vi.mock('@18ways/core/common', () => ({
-  init: vi.fn(),
-  generateHashId: vi.fn(() => 'metadata-hash'),
-  fetchSeed: vi.fn(async () => ({
-    data: {},
-    errors: [],
-  })),
-  fetchTranslations: vi.fn(async () => ({
-    data: [],
-    errors: [],
-  })),
-}));
-
-vi.mock('@18ways/core/i18n-shared', async () => {
-  const actual = await vi.importActual<typeof import('@18ways/core/i18n-shared')>(
-    '@18ways/core/i18n-shared'
-  );
+vi.mock('@18ways/core/common', async () => {
+  const actual = await vi.importActual<typeof import('@18ways/core/common')>('@18ways/core/common');
 
   return {
     ...actual,
+    init: vi.fn(),
+    generateHashId: vi.fn(() => 'metadata-hash'),
+    fetchSeed: vi.fn(async () => ({
+      data: {},
+      errors: [],
+    })),
+    fetchTranslations: vi.fn(async () => ({
+      data: [],
+      errors: [],
+    })),
     fetchAcceptedLocales: vi.fn(async () => ['en-GB']),
   };
 });
@@ -50,16 +45,20 @@ describe('next init', () => {
     const ways = init({
       apiKey: 'test-api-key',
       baseLocale: 'en-GB',
-      apiUrl: 'https://example.com/api',
+      _apiUrl: 'https://example.com/api',
     });
     expect(typeof ways.resolveWaysMiddlewareEdit).toBe('function');
 
     const attrs = await ways.htmlAttrs();
 
-    expect(serverModule.getWaysHtmlAttrs).toHaveBeenCalledWith({
-      locale: undefined,
-      baseLocale: 'en-GB',
-    });
+    expect(serverModule.getWaysHtmlAttrs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        locale: undefined,
+        baseLocale: 'en-GB',
+        apiKey: 'test-api-key',
+        _apiUrl: 'https://example.com/api',
+      })
+    );
     expect(attrs).toEqual({
       lang: 'es-ES',
       dir: 'ltr',
@@ -73,7 +72,7 @@ describe('next init', () => {
     const ways = init({
       apiKey: 'test-api-key',
       baseLocale: 'en-GB',
-      apiUrl: 'https://example.com/api',
+      _apiUrl: 'https://example.com/api',
     });
 
     const metadata = await ways.generateWaysMetadata(
@@ -89,11 +88,15 @@ describe('next init', () => {
       }
     );
 
-    expect(serverModule.generateWaysMetadata).toHaveBeenCalledWith({
-      locale: undefined,
-      baseLocale: 'en-GB',
-      origin: 'https://18ways.com',
-    });
+    expect(serverModule.generateWaysMetadata).toHaveBeenCalledWith(
+      expect.objectContaining({
+        locale: undefined,
+        baseLocale: 'en-GB',
+        apiKey: 'test-api-key',
+        _apiUrl: 'https://example.com/api',
+        origin: 'https://18ways.com',
+      })
+    );
 
     expect(metadata).toEqual({
       title: '18ways.com',
@@ -139,7 +142,7 @@ describe('next init', () => {
       apiKey: 'test-api-key',
       locale: 'es-ES',
       baseLocale: 'en-GB',
-      apiUrl: 'https://example.com/api',
+      _apiUrl: 'https://example.com/api',
     });
 
     const metadata = await ways.generateWaysMetadata((t) => ({
@@ -176,19 +179,21 @@ describe('next init', () => {
     });
 
     expect(options.baseLocale).toBe('en-GB');
-    expect(options.pathRouting?.exclude).toContain('/dashboard');
-    expect(options.pathRouting?.exclude).not.toContain('/sitemap.xml');
+    expect(options.pathRouting).toBeUndefined();
   });
 
   it('resolves accepted locales inside init middleware handling', async () => {
     const { init } = await import('../next');
-    const { fetchAcceptedLocales } = await import('@18ways/core/i18n-shared');
+    const { fetchAcceptedLocales } = await import('@18ways/core/common');
     const { NextResponse } = await import('next/server');
 
     const ways = init({
       apiKey: 'test-api-key',
       baseLocale: 'en-GB',
-      apiUrl: 'https://example.com/api',
+      pathRouting: {
+        exclude: ['/dashboard'],
+      },
+      _apiUrl: 'https://example.com/api',
     });
 
     const headers = new Headers({
@@ -211,10 +216,15 @@ describe('next init', () => {
 
     const response = edit(() => NextResponse.next());
 
-    expect(fetchAcceptedLocales).toHaveBeenCalledWith('en-GB', {
-      origin: 'https://18ways.com',
-      apiKey: 'test-api-key',
-    });
+    expect(fetchAcceptedLocales).toHaveBeenCalledWith(
+      'en-GB',
+      expect.objectContaining({
+        origin: 'https://18ways.com',
+        apiKey: 'test-api-key',
+        apiUrl: 'https://example.com/api',
+        _requestInitDecorator: expect.any(Function),
+      })
+    );
     expect(response.headers.get('location')).toBe('https://18ways.com/en-GB/docs');
   });
 });
