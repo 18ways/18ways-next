@@ -11,9 +11,29 @@ import { startMockApiServer, stopMockApiServer, MOCK_API_PORT } from '../utils/m
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const TEST_APPS_DIR = path.join(__dirname, '..', 'test-apps');
+const REPO_ROOT = path.resolve(__dirname, '..', '..', '..', '..');
+const ROOT_LOCKFILE_CANDIDATES = ['bun.lock', 'bun.lockb'];
+const INPUT_MTIME_TOLERANCE_MS = 1000;
+const IGNORED_INPUT_DIRECTORIES = new Set([
+  '.e2e-trash',
+  '.git',
+  '.next',
+  '.turbo',
+  'coverage',
+  'dist',
+  'node_modules',
+  'playwright-report',
+  'test-results',
+]);
+const latestMtimeCache = new Map<string, number>();
+const USE_DYNAMIC_PROGRESS = process.stdout.isTTY && process.env.E2E_DYNAMIC_PROGRESS === '1';
+const scheduledTrashCleanupPaths = new Set<string>();
 
 // Track all running apps for cleanup on exit
 const runningApps: TestApp[] = [];
+
+// Track in-flight child processes so failed runs don't wait for sibling tasks to finish.
+const activeChildProcesses = new Set<ChildProcess>();
 
 // Track mock API server for cleanup
 let mockApiServer: http.Server | null = null;
@@ -27,6 +47,7 @@ interface AppProgress {
   test: 'pending' | 'running' | 'done';
   lineNumber: number;
   testSquares?: string[];
+  lastRenderedState?: string;
 }
 
 interface TestProgressState {
@@ -46,6 +67,40 @@ interface TestProgressState {
 const appProgress = new Map<string, AppProgress>();
 let progressStartLine = 0;
 
+interface LocalDependencyEntry {
+  name: string;
+  protocol: 'file' | 'link';
+  sourcePath: string;
+}
+
+const APP_TRASH_DIRNAME = '.e2e-trash';
+
+function formatProgressLine(progress: AppProgress): string {
+  const steps = [
+    { name: 'install', status: progress.install },
+    { name: 'build', status: progress.build },
+    { name: 'start', status: progress.start },
+    { name: 'test', status: progress.test },
+  ];
+
+  const statusStr = steps
+    .map(({ name, status }) => {
+      if (name === 'test' && (status === 'running' || status === 'done')) {
+        const squares = progress.testSquares || [];
+        if (squares.length > 0) {
+          return `${status === 'done' ? chalk.green('✓') : chalk.yellow('⋯')} test ${squares.join('')}`;
+        }
+      }
+      if (status === 'done') return chalk.green(`✓ ${name}`);
+      if (status === 'cached') return chalk.cyan(`↻ ${name}`);
+      if (status === 'running') return chalk.yellow(`⋯ ${name}`);
+      return chalk.gray(name);
+    })
+    .join(' → ');
+
+  return `  ${chalk.bold(progress.name)}: ${statusStr}`;
+}
+
 function updateProgress(
   appName: string,
   step: 'install' | 'build' | 'start' | 'test',
@@ -55,6 +110,16 @@ function updateProgress(
   if (!progress) return;
 
   progress[step] = status;
+  const renderedState = formatProgressLine(progress);
+  if (progress.lastRenderedState === renderedState) {
+    return;
+  }
+  progress.lastRenderedState = renderedState;
+
+  if (!USE_DYNAMIC_PROGRESS) {
+    console.log(renderedState);
+    return;
+  }
 
   // Calculate how many lines to move up from current position
   const currentLine = progressStartLine; // Where cursor currently is (after all progress lines)
@@ -70,32 +135,7 @@ function updateProgress(
 
     // Clear the entire line
     process.stdout.write('\x1b[2K\r');
-
-    // Build status string
-    const steps = [
-      { name: 'install', status: progress.install },
-      { name: 'build', status: progress.build },
-      { name: 'start', status: progress.start },
-      { name: 'test', status: progress.test },
-    ];
-
-    const statusStr = steps
-      .map(({ name, status }) => {
-        if (name === 'test' && (status === 'running' || status === 'done')) {
-          // Show test squares for the test step
-          const squares = progress.testSquares || [];
-          if (squares.length > 0) {
-            return `${status === 'done' ? chalk.green('✓') : chalk.yellow('⋯')} test ${squares.join('')}`;
-          }
-        }
-        if (status === 'done') return chalk.green(`✓ ${name}`);
-        if (status === 'cached') return chalk.cyan(`↻ ${name}`);
-        if (status === 'running') return chalk.yellow(`⋯ ${name}`);
-        return chalk.gray(name);
-      })
-      .join(' → ');
-
-    process.stdout.write(`  ${chalk.bold(progress.name)}: ${statusStr}`);
+    process.stdout.write(renderedState);
 
     // Restore cursor position
     process.stdout.write('\x1b8');
@@ -137,6 +177,372 @@ function logPhase(phase: string) {
   console.log(`\n${chalk.bold.cyan(phase)}`);
 }
 
+function getRootLockfilePath(): string | null {
+  for (const candidate of ROOT_LOCKFILE_CANDIDATES) {
+    const lockfilePath = path.join(REPO_ROOT, candidate);
+    if (fs.existsSync(lockfilePath)) {
+      return lockfilePath;
+    }
+  }
+
+  return null;
+}
+
+function readPackageJson(packageJsonPath: string): Record<string, any> {
+  return JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8')) as Record<string, any>;
+}
+
+function toNodeModulesPath(appPath: string, packageName: string): string {
+  return path.join(appPath, 'node_modules', ...packageName.split('/'));
+}
+
+function collectLocalDependencyEntries(app: TestApp): LocalDependencyEntry[] {
+  const packageJsonPath = path.join(app.path, 'package.json');
+  if (!fs.existsSync(packageJsonPath)) {
+    return [];
+  }
+
+  const pkg = readPackageJson(packageJsonPath);
+  const dependencyMaps = [
+    pkg.dependencies,
+    pkg.devDependencies,
+    pkg.optionalDependencies,
+    pkg.overrides,
+  ];
+  const entries = new Map<string, string>();
+
+  for (const dependencyMap of dependencyMaps) {
+    if (!dependencyMap || typeof dependencyMap !== 'object') {
+      continue;
+    }
+
+    for (const [name, version] of Object.entries(dependencyMap)) {
+      if (typeof version !== 'string') {
+        continue;
+      }
+
+      const protocol = version.startsWith('file:')
+        ? 'file'
+        : version.startsWith('link:')
+          ? 'link'
+          : null;
+      if (!protocol) {
+        continue;
+      }
+
+      entries.set(
+        name,
+        JSON.stringify({
+          protocol,
+          sourcePath: path.resolve(app.path, version.slice(`${protocol}:`.length)),
+        })
+      );
+    }
+  }
+
+  return Array.from(entries, ([name, serialized]) => ({
+    name,
+    ...(JSON.parse(serialized) as Omit<LocalDependencyEntry, 'name'>),
+  }));
+}
+
+function getLatestMtime(targetPath: string): number {
+  const cached = latestMtimeCache.get(targetPath);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  if (!fs.existsSync(targetPath)) {
+    latestMtimeCache.set(targetPath, 0);
+    return 0;
+  }
+
+  const stats = fs.statSync(targetPath);
+  let latestMtime = stats.mtimeMs;
+
+  if (stats.isDirectory()) {
+    const entries = fs.readdirSync(targetPath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory() && IGNORED_INPUT_DIRECTORIES.has(entry.name)) {
+        continue;
+      }
+      latestMtime = Math.max(latestMtime, getLatestMtime(path.join(targetPath, entry.name)));
+    }
+  }
+
+  latestMtimeCache.set(targetPath, latestMtime);
+  return latestMtime;
+}
+
+function getLatestMtimeForPaths(paths: string[]): number {
+  return paths.reduce((latest, currentPath) => Math.max(latest, getLatestMtime(currentPath)), 0);
+}
+
+function getOldestDirectMtimeForPaths(paths: string[]): number | null {
+  const existingPaths = paths.filter((currentPath) => fs.existsSync(currentPath));
+  if (existingPaths.length !== paths.length) {
+    return null;
+  }
+
+  return existingPaths.reduce((oldest, currentPath) => {
+    const currentMtime = fs.statSync(currentPath).mtimeMs;
+    return Math.min(oldest, currentMtime);
+  }, Number.POSITIVE_INFINITY);
+}
+
+function getBuildInputPaths(app: TestApp): string[] {
+  const localDependencyPaths = collectLocalDependencyEntries(app).map(
+    ({ sourcePath }) => sourcePath
+  );
+  return [app.path, ...localDependencyPaths];
+}
+
+function getExpectedReadyMarker(app: TestApp): string {
+  return `data-e2e-app="${app.name}"`;
+}
+
+function trackChildProcess(child: ChildProcess): () => void {
+  activeChildProcesses.add(child);
+
+  const untrack = () => {
+    activeChildProcesses.delete(child);
+  };
+
+  child.once('close', untrack);
+  child.once('exit', untrack);
+  child.once('error', untrack);
+
+  return untrack;
+}
+
+function stopChildProcess(child: ChildProcess): void {
+  if (child.killed) {
+    activeChildProcesses.delete(child);
+    return;
+  }
+
+  try {
+    child.kill('SIGTERM');
+  } catch {
+    activeChildProcesses.delete(child);
+    return;
+  }
+
+  setTimeout(() => {
+    if (!child.killed) {
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        // Ignore failures during forced shutdown.
+      }
+    }
+  }, 1000);
+}
+
+function getExternalDependencyNames(app: TestApp): string[] {
+  return getExternalDependencySpecs(app).map(([name]) => name);
+}
+
+function getExternalDependencySpecs(app: TestApp): Array<[string, string]> {
+  const packageJsonPath = path.join(app.path, 'package.json');
+  if (!fs.existsSync(packageJsonPath)) {
+    return [];
+  }
+
+  const pkg = readPackageJson(packageJsonPath);
+  const dependencyMaps = [pkg.dependencies, pkg.devDependencies, pkg.optionalDependencies];
+  const names = new Set<string>();
+
+  for (const dependencyMap of dependencyMaps) {
+    if (!dependencyMap || typeof dependencyMap !== 'object') {
+      continue;
+    }
+
+    for (const [name, version] of Object.entries(dependencyMap)) {
+      if (typeof version !== 'string') {
+        continue;
+      }
+      if (version.startsWith('file:') || version.startsWith('link:')) {
+        continue;
+      }
+      names.add(JSON.stringify([name, version]));
+    }
+  }
+
+  return Array.from(names, (entry) => JSON.parse(entry) as [string, string]);
+}
+
+function removePathIfExists(targetPath: string): void {
+  if (!fs.existsSync(targetPath)) {
+    return;
+  }
+
+  fs.rmSync(targetPath, {
+    force: true,
+    recursive: true,
+  });
+}
+
+function movePathToTrash(app: TestApp, targetPath: string): void {
+  if (!fs.existsSync(targetPath)) {
+    return;
+  }
+
+  const trashRoot = path.join(app.path, APP_TRASH_DIRNAME);
+  fs.mkdirSync(trashRoot, { recursive: true });
+
+  const destinationPath = path.join(
+    trashRoot,
+    `${path.basename(targetPath)}-${process.pid}-${Date.now()}-${Math.random()
+      .toString(16)
+      .slice(2)}`
+  );
+
+  try {
+    fs.renameSync(targetPath, destinationPath);
+    scheduleTrashCleanup(destinationPath);
+  } catch (error: any) {
+    if (error?.code === 'ENOENT') {
+      return;
+    }
+
+    // Fall back to recursive removal only if rename fails unexpectedly.
+    removePathIfExists(targetPath);
+  }
+}
+
+function scheduleTrashCleanup(targetPath: string): void {
+  if (scheduledTrashCleanupPaths.has(targetPath)) {
+    return;
+  }
+
+  scheduledTrashCleanupPaths.add(targetPath);
+  try {
+    const cleanupProcess = spawn('rm', ['-rf', targetPath], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    cleanupProcess.unref();
+  } catch {
+    fs.rm(targetPath, { force: true, recursive: true }, () => {
+      scheduledTrashCleanupPaths.delete(targetPath);
+    });
+    return;
+  }
+}
+
+function scheduleExistingTrashCleanup(app: TestApp): void {
+  const trashRoot = path.join(app.path, APP_TRASH_DIRNAME);
+  if (!fs.existsSync(trashRoot)) {
+    return;
+  }
+
+  for (const entry of fs.readdirSync(trashRoot)) {
+    scheduleTrashCleanup(path.join(trashRoot, entry));
+  }
+}
+
+function discardInstalledDependency(app: TestApp, targetPath: string): void {
+  if (!fs.existsSync(targetPath)) {
+    return;
+  }
+
+  const stats = fs.lstatSync(targetPath);
+  if (stats.isSymbolicLink()) {
+    fs.unlinkSync(targetPath);
+    return;
+  }
+
+  movePathToTrash(app, targetPath);
+}
+
+function pruneLegacyNodeModules(app: TestApp): void {
+  const nodeModulesPath = path.join(app.path, 'node_modules');
+  scheduleExistingTrashCleanup(app);
+  if (!fs.existsSync(nodeModulesPath)) {
+    return;
+  }
+
+  const nodeModulesEntries = fs.readdirSync(nodeModulesPath);
+  for (const entry of nodeModulesEntries) {
+    if (!entry.startsWith('.old-')) {
+      continue;
+    }
+    movePathToTrash(app, path.join(nodeModulesPath, entry));
+  }
+
+  for (const { name, protocol } of collectLocalDependencyEntries(app)) {
+    if (protocol !== 'link') {
+      continue;
+    }
+
+    const installedPath = toNodeModulesPath(app.path, name);
+    if (!fs.existsSync(installedPath)) {
+      continue;
+    }
+
+    const stats = fs.lstatSync(installedPath);
+    if (!stats.isSymbolicLink()) {
+      movePathToTrash(app, installedPath);
+    }
+  }
+}
+
+function ensureLinkedLocalDependencies(app: TestApp): void {
+  for (const { name, protocol, sourcePath } of collectLocalDependencyEntries(app)) {
+    if (protocol !== 'link') {
+      continue;
+    }
+
+    const installedPath = toNodeModulesPath(app.path, name);
+    const installedParentPath = path.dirname(installedPath);
+    if (!fs.existsSync(installedParentPath)) {
+      fs.mkdirSync(installedParentPath, { recursive: true });
+    }
+
+    if (fs.existsSync(installedPath)) {
+      const stats = fs.lstatSync(installedPath);
+      if (stats.isSymbolicLink()) {
+        const currentTarget = fs.readlinkSync(installedPath);
+        const resolvedTarget = path.resolve(path.dirname(installedPath), currentTarget);
+        if (resolvedTarget === sourcePath) {
+          continue;
+        }
+      }
+
+      discardInstalledDependency(app, installedPath);
+    }
+
+    fs.symlinkSync(sourcePath, installedPath, 'dir');
+  }
+}
+
+function hasSatisfiedExternalDependencies(app: TestApp): boolean {
+  const dependencySpecs = getExternalDependencySpecs(app);
+  if (dependencySpecs.length === 0) {
+    return fs.existsSync(path.join(app.path, 'node_modules'));
+  }
+
+  return dependencySpecs.every(([name, versionSpec]) => {
+    const installedPath = toNodeModulesPath(app.path, name);
+    const installedPackageJsonPath = path.join(installedPath, 'package.json');
+    if (!fs.existsSync(installedPackageJsonPath)) {
+      return false;
+    }
+
+    if (!/^\d+\.\d+\.\d+(-.+)?$/.test(versionSpec)) {
+      return true;
+    }
+
+    try {
+      const installedPackageJson = readPackageJson(installedPackageJsonPath);
+      return installedPackageJson.version === versionSpec;
+    } catch {
+      return false;
+    }
+  });
+}
+
 async function discoverTestApps(): Promise<TestApp[]> {
   const apps: TestApp[] = [];
   const entries = fs.readdirSync(TEST_APPS_DIR, { withFileTypes: true });
@@ -160,25 +566,18 @@ async function discoverTestApps(): Promise<TestApp[]> {
 
 async function installDependencies(app: TestApp): Promise<void> {
   const packageJsonPath = path.join(app.path, 'package.json');
-  const nodeModulesPath = path.join(app.path, 'node_modules');
 
   if (!fs.existsSync(packageJsonPath)) {
     return;
   }
 
   updateProgress(app.name, 'install', 'running');
+  pruneLegacyNodeModules(app);
+  ensureLinkedLocalDependencies(app);
 
-  // Skip if node_modules exists and is current (optimization for rapid iteration)
-  if (fs.existsSync(nodeModulesPath)) {
-    const nodeModulesTime = fs.statSync(nodeModulesPath).mtime.getTime();
-    const packageJsonTime = fs.statSync(packageJsonPath).mtime.getTime();
-
-    // Skip if node_modules is newer than package.json, or within 1s older (timing tolerance)
-    // Only reinstall if package.json has been modified AFTER node_modules
-    if (nodeModulesTime >= packageJsonTime - 1000) {
-      updateProgress(app.name, 'install', 'cached');
-      return;
-    }
+  if (hasSatisfiedExternalDependencies(app)) {
+    updateProgress(app.name, 'install', 'cached');
+    return;
   }
 
   return new Promise((resolve, reject) => {
@@ -190,6 +589,7 @@ async function installDependencies(app: TestApp): Promise<void> {
         stdio: 'pipe',
       }
     );
+    const untrack = trackChildProcess(bunProcess);
 
     let errorOutput = '';
     bunProcess.stderr?.on('data', (data) => {
@@ -197,7 +597,9 @@ async function installDependencies(app: TestApp): Promise<void> {
     });
 
     bunProcess.on('close', (code) => {
+      untrack();
       if (code === 0) {
+        ensureLinkedLocalDependencies(app);
         updateProgress(app.name, 'install', 'done');
         resolve();
       } else {
@@ -210,6 +612,7 @@ async function installDependencies(app: TestApp): Promise<void> {
     });
 
     bunProcess.on('error', (error) => {
+      untrack();
       log(`\n  ✗ ${app.name}: ${error.message}`, chalk.red);
       reject(error);
     });
@@ -224,36 +627,26 @@ async function buildApp(app: TestApp): Promise<void> {
   updateProgress(app.name, 'build', 'running');
 
   try {
-    // Skip build if already built and fresh (optimization for rapid test iterations)
-    const packageJsonPath = path.join(app.path, 'package.json');
+    let buildArtifacts: string[];
+    if (app.type === 'nextjs') {
+      // Next.js start requires more than BUILD_ID. Ensure required manifests exist.
+      buildArtifacts = [
+        path.join(app.path, '.next', 'BUILD_ID'),
+        path.join(app.path, '.next', 'prerender-manifest.json'),
+        path.join(app.path, '.next', 'routes-manifest.json'),
+      ];
+    } else if (app.type === 'react-vanilla') {
+      buildArtifacts = [path.join(app.path, '18ways.bundle.js')];
+    } else {
+      buildArtifacts = [path.join(app.path, 'dist')];
+    }
 
-    if (fs.existsSync(packageJsonPath)) {
-      let buildArtifacts: string[];
-      if (app.type === 'nextjs') {
-        // Next.js start requires more than BUILD_ID. Ensure required manifests exist.
-        buildArtifacts = [
-          path.join(app.path, '.next', 'BUILD_ID'),
-          path.join(app.path, '.next', 'prerender-manifest.json'),
-          path.join(app.path, '.next', 'routes-manifest.json'),
-        ];
-      } else if (app.type === 'react-vanilla') {
-        buildArtifacts = [path.join(app.path, '18ways.bundle.js')];
-      } else {
-        buildArtifacts = [path.join(app.path, 'dist')];
-      }
-
-      const hasAllArtifacts = buildArtifacts.every((artifactPath) => fs.existsSync(artifactPath));
-      if (hasAllArtifacts) {
-        const buildTime = Math.min(
-          ...buildArtifacts.map((artifactPath) => fs.statSync(artifactPath).mtime.getTime())
-        );
-        const packageTime = fs.statSync(packageJsonPath).mtime.getTime();
-
-        // If build is current (within 1s tolerance), skip rebuild
-        if (buildTime >= packageTime - 1000) {
-          updateProgress(app.name, 'build', 'cached');
-          return;
-        }
+    const oldestBuildArtifactMtime = getOldestDirectMtimeForPaths(buildArtifacts);
+    if (oldestBuildArtifactMtime !== null) {
+      const latestBuildInputMtime = getLatestMtimeForPaths(getBuildInputPaths(app));
+      if (oldestBuildArtifactMtime >= latestBuildInputMtime - INPUT_MTIME_TOLERANCE_MS) {
+        updateProgress(app.name, 'build', 'cached');
+        return;
       }
     }
 
@@ -268,6 +661,7 @@ async function buildApp(app: TestApp): Promise<void> {
           NEXT_PRIVATE_SKIP_VALIDATION: '1',
         },
       });
+      const untrack = trackChildProcess(buildProcess);
 
       let output = '';
       let errorOutput = '';
@@ -281,6 +675,7 @@ async function buildApp(app: TestApp): Promise<void> {
       });
 
       buildProcess.on('close', (code) => {
+        untrack();
         if (code === 0) {
           updateProgress(app.name, 'build', 'done');
           resolve();
@@ -298,6 +693,7 @@ async function buildApp(app: TestApp): Promise<void> {
       });
 
       buildProcess.on('error', (error) => {
+        untrack();
         log(`\n  ✗ ${app.name}: ${error.message}`, chalk.red);
         reject(error);
       });
@@ -308,14 +704,32 @@ async function buildApp(app: TestApp): Promise<void> {
   }
 }
 
-async function waitForServer(port: number, maxAttempts = 200): Promise<boolean> {
-  // Poll HTTP endpoint to check if server is ready (much faster than waiting for log output)
+async function waitForServer(app: TestApp, maxAttempts = 200): Promise<boolean> {
+  const expectedReadyMarker = getExpectedReadyMarker(app);
+
+  // Poll the app root and verify the expected marker is present.
   for (let i = 0; i < maxAttempts; i++) {
     try {
       await new Promise<void>((resolve, reject) => {
-        const req = http.get(`http://localhost:${port}`, (res) => {
-          // Any response (even 404) means server is up
-          resolve();
+        const req = http.get(`http://localhost:${app.port}`, (res) => {
+          let body = '';
+          res.setEncoding('utf8');
+          res.on('data', (chunk) => {
+            body += chunk;
+          });
+          res.on('end', () => {
+            if (res.statusCode !== 200) {
+              reject(new Error(`Unexpected status code ${res.statusCode}`));
+              return;
+            }
+
+            if (!body.includes(expectedReadyMarker)) {
+              reject(new Error('Expected app readiness marker not found'));
+              return;
+            }
+
+            resolve();
+          });
         });
         req.on('error', reject);
         req.setTimeout(1000, () => {
@@ -390,19 +804,19 @@ async function startServer(app: TestApp): Promise<void> {
     // Use HTTP polling to detect when server is ready (much faster!)
     setTimeout(async () => {
       try {
-        const ready = await waitForServer(app.port);
+        const ready = await waitForServer(app);
         if (ready && !resolved) {
           resolved = true;
           updateProgress(app.name, 'start', 'done');
           resolve();
         } else if (!resolved) {
-          serverProcess.kill();
+          stopServer(app);
           log(`\n  ✗ ${app.name}: Server start timeout`, chalk.red);
           reject(new Error('Server start timeout'));
         }
       } catch (error: any) {
         if (!resolved) {
-          serverProcess.kill();
+          stopServer(app);
           log(`\n  ✗ ${app.name}: ${error.message}`, chalk.red);
           reject(error);
         }
@@ -489,6 +903,7 @@ async function runPlaywrightTests(app: TestApp, suite?: string): Promise<TestRes
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+    const untrack = trackChildProcess(playwright);
 
     // Poll progress file for real-time updates
     const progressInterval = setInterval(() => {
@@ -526,6 +941,7 @@ async function runPlaywrightTests(app: TestApp, suite?: string): Promise<TestRes
     });
 
     playwright.on('close', (code) => {
+      untrack();
       clearInterval(progressInterval);
       const duration = (Date.now() - startTime) / 1000;
 
@@ -534,45 +950,61 @@ async function runPlaywrightTests(app: TestApp, suite?: string): Promise<TestRes
       let failed = 0;
       let output = '';
       let failures: Array<{ title: string; error: string; file?: string; line?: number }> = [];
+      let success = code === 0;
+      let reporterError: string | null = null;
 
       try {
-        if (fs.existsSync(resultFile)) {
-          output = fs.readFileSync(resultFile, 'utf-8');
-          const jsonOutput = JSON.parse(output);
-          const suites = jsonOutput.suites || [];
-
-          const countTests = (suite: any): void => {
-            if (suite.specs) {
-              suite.specs.forEach((spec: any) => {
-                spec.tests?.forEach((test: any) => {
-                  const status = test.results?.[0]?.status;
-                  if (status === 'passed') {
-                    passed++;
-                  } else if (
-                    status === 'failed' ||
-                    status === 'timedOut' ||
-                    status === 'interrupted'
-                  ) {
-                    failed++;
-                  }
-                  // Skip 'skipped' tests - don't count them
-                });
-              });
-            }
-            if (suite.suites) {
-              suite.suites.forEach(countTests);
-            }
-          };
-
-          suites.forEach(countTests);
+        if (!fs.existsSync(resultFile)) {
+          throw new Error(`Playwright JSON reporter did not write ${path.basename(resultFile)}`);
         }
+        output = fs.readFileSync(resultFile, 'utf-8');
+        const jsonOutput = JSON.parse(output);
+        const suites = jsonOutput.suites || [];
 
+        const countTests = (suite: any): void => {
+          if (suite.specs) {
+            suite.specs.forEach((spec: any) => {
+              spec.tests?.forEach((test: any) => {
+                const status = test.results?.[0]?.status;
+                if (status === 'passed') {
+                  passed++;
+                } else if (
+                  status === 'failed' ||
+                  status === 'timedOut' ||
+                  status === 'interrupted'
+                ) {
+                  failed++;
+                }
+                // Skip 'skipped' tests - don't count them
+              });
+            });
+          }
+          if (suite.suites) {
+            suite.suites.forEach(countTests);
+          }
+        };
+
+        suites.forEach(countTests);
+      } catch (error: any) {
+        reporterError = error?.message || 'Unknown Playwright reporter error';
+        failed = Math.max(failed, 1);
+        success = false;
+        failures.push({
+          title: 'Playwright runner output unavailable',
+          error: reporterError,
+        });
+      }
+
+      try {
         // Get failures from progress file and do final display update
         if (fs.existsSync(progressFile)) {
           const progressData = JSON.parse(
             fs.readFileSync(progressFile, 'utf-8')
           ) as TestProgressState;
-          failures = progressData.failures || [];
+          const reporterFailures = progressData.failures || [];
+          if (reporterFailures.length > 0) {
+            failures = reporterFailures;
+          }
 
           // Final update to show all test squares with correct colors
           const squares = progressData.tests
@@ -590,11 +1022,13 @@ async function runPlaywrightTests(app: TestApp, suite?: string): Promise<TestRes
           }
         }
       } catch (e) {
-        // If JSON parsing fails, just use exit code
-        if (code === 0) {
-          passed = 1; // At least one test passed
-        } else {
-          failed = 1;
+        if (reporterError === null) {
+          failed = Math.max(failed, 1);
+          success = false;
+          failures.push({
+            title: 'Playwright progress output unavailable',
+            error: e instanceof Error ? e.message : 'Unknown Playwright progress error',
+          });
         }
       }
 
@@ -608,7 +1042,7 @@ async function runPlaywrightTests(app: TestApp, suite?: string): Promise<TestRes
 
       resolve({
         app: app.name,
-        success: code === 0,
+        success,
         duration,
         passed,
         failed,
@@ -724,6 +1158,10 @@ function cleanupAllServers(): void {
     runningApps.forEach(stopServer);
     runningApps.length = 0; // Clear the array
   }
+  if (activeChildProcesses.size > 0) {
+    Array.from(activeChildProcesses).forEach(stopChildProcess);
+    activeChildProcesses.clear();
+  }
   if (mockApiServer) {
     mockApiServer.close();
     mockApiServer = null;
@@ -814,7 +1252,7 @@ export async function runE2E(): Promise<boolean> {
   // Start mock API server for all tests (handles both SSR and browser requests)
   try {
     mockApiServer = await startMockApiServer('success');
-    log(`  ✓ Mock API server started on port ${MOCK_API_PORT}`, chalk.green);
+    log(`  ✓ Mock API server ready on port ${MOCK_API_PORT}`, chalk.green);
   } catch (error: any) {
     log(`  ✗ Failed to start mock API server: ${error.message}`, chalk.red);
     return false;
@@ -868,16 +1306,24 @@ export async function runE2E(): Promise<boolean> {
         lineNumber: index,
       });
       // Print initial state
-      console.log(`  ${chalk.bold(app.name)}: ${chalk.gray('install → build → start → test')}`);
+      const progress = appProgress.get(app.name)!;
+      progress.lastRenderedState = formatProgressLine(progress);
+      console.log(progress.lastRenderedState);
     });
 
     // Track current cursor position as start
-    progressStartLine = apps.length;
+    progressStartLine = USE_DYNAMIC_PROGRESS ? apps.length : 0;
 
     // Run each app through its full pipeline in parallel
     // Each app: install → build → start → test
     // This is much faster than waiting for all apps to finish before starting tests!
-    const testResults = await Promise.all(apps.map((app) => setupApp(app, options.suite)));
+    let testResults: TestResult[];
+    try {
+      testResults = await Promise.all(apps.map((app) => setupApp(app, options.suite)));
+    } catch (error) {
+      cleanupAllServers();
+      throw error;
+    }
 
     // Move cursor past all the progress lines
     console.log(); // Add a blank line after progress

@@ -11,14 +11,14 @@
     "next": "15.5.9",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "@18ways/core": "file:../../../../18ways-core",
-    "@18ways/react": "file:../../../../18ways-react",
-    "@18ways/next": "file:../../.."
+    "@18ways/core": "link:../../../../18ways-core",
+    "@18ways/react": "link:../../../../18ways-react",
+    "@18ways/next": "link:../../.."
   },
   "overrides": {
-    "@18ways/core": "file:../../../../18ways-core",
-    "@18ways/react": "file:../../../../18ways-react",
-    "@18ways/next": "file:../../.."
+    "@18ways/core": "link:../../../../18ways-core",
+    "@18ways/react": "link:../../../../18ways-react",
+    "@18ways/next": "link:../../.."
   },
   "packageManager": "bun@1.3.8"
 }

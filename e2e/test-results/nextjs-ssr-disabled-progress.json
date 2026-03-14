@@ -1,9 +1,0 @@
-{
-  "tests": [
-    {
-      "title": "loads in English, switches to Japanese, then Spanish",
-      "status": "passed"
-    }
-  ],
-  "failures": []
-}

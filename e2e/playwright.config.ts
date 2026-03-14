@@ -3,13 +3,19 @@ import os from 'os';
 
 const jsonOutputFile = process.env.PLAYWRIGHT_JSON_OUTPUT_FILE || 'test-results/results.json';
 const progressFile = process.env.PLAYWRIGHT_PROGRESS_FILE || 'test-results/.progress.json';
+const requestedWorkerCount = Number.parseInt(process.env.PLAYWRIGHT_WORKERS || '', 10);
+const defaultWorkerCount = process.env.CI ? 2 : Math.min(2, os.cpus().length);
+const workerCount =
+  Number.isFinite(requestedWorkerCount) && requestedWorkerCount > 0
+    ? requestedWorkerCount
+    : defaultWorkerCount;
 
 export default defineConfig({
   testDir: './tests',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 2 : os.cpus().length,
+  workers: workerCount,
   reporter: [
     ['json', { outputFile: jsonOutputFile }],
     ['./utils/progress-reporter.ts', { progressFile }],

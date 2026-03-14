@@ -14,6 +14,7 @@ export type ScenarioName =
   | 'slowSuccess';
 
 export const MOCK_API_PORT = 4000;
+export const MOCK_API_HEALTH_PATH = '/__18ways_mock_api_health';
 
 function createTranslateResponse(
   postData: any,
@@ -144,7 +145,15 @@ export function createMockApiServer(scenario: ScenarioName): http.Server {
         return;
       }
 
-      if (req.url === '/translate' && req.method === 'POST') {
+      if (req.url === MOCK_API_HEALTH_PATH && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            service: '18ways-e2e-mock-api',
+            scenario,
+          })
+        );
+      } else if (req.url === '/translate' && req.method === 'POST') {
         const postData = JSON.parse(body || '{}');
         const response = createTranslateResponse(postData, scenario);
         res.writeHead(response.status, { 'Content-Type': 'application/json' });
@@ -164,31 +173,105 @@ export function createMockApiServer(scenario: ScenarioName): http.Server {
   return server;
 }
 
-export async function startMockApiServer(scenario: ScenarioName): Promise<http.Server> {
+async function verifyExistingMockApiServer(scenario: ScenarioName): Promise<boolean> {
+  return await new Promise<boolean>((resolve) => {
+    const req = http.get(
+      {
+        host: '127.0.0.1',
+        port: MOCK_API_PORT,
+        path: MOCK_API_HEALTH_PATH,
+      },
+      (res) => {
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => {
+          body += chunk;
+        });
+        res.on('end', () => {
+          if (res.statusCode !== 200) {
+            resolve(false);
+            return;
+          }
+
+          try {
+            const payload = JSON.parse(body || '{}') as {
+              service?: string;
+              scenario?: string;
+            };
+            resolve(payload.service === '18ways-e2e-mock-api' && payload.scenario === scenario);
+          } catch {
+            resolve(false);
+          }
+        });
+      }
+    );
+
+    req.on('error', () => resolve(false));
+    req.setTimeout(1000, () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
+export async function startMockApiServer(scenario: ScenarioName): Promise<http.Server | null> {
   const server = createMockApiServer(scenario);
+  let reusingExistingServer = false;
 
   await new Promise<void>((resolve, reject) => {
-    server.listen(MOCK_API_PORT, () => {
+    const cleanupListeners = () => {
+      server.removeAllListeners('listening');
+      server.removeAllListeners('error');
+    };
+
+    server.on('listening', () => {
+      cleanupListeners();
       resolve();
     });
+
+    server.listen(MOCK_API_PORT, () => {
+      // Handled by the listening event so cleanup is centralized.
+    });
+
     server.on('error', (err: any) => {
       if (err.code === 'EADDRINUSE') {
-        console.log(
-          `⚠️  Port ${MOCK_API_PORT} already in use, assuming mock API is already running`
-        );
-        resolve();
+        void (async () => {
+          cleanupListeners();
+          reusingExistingServer = await verifyExistingMockApiServer(scenario);
+          if (reusingExistingServer) {
+            console.log(
+              `⚠️  Port ${MOCK_API_PORT} already in use, reusing matching mock API server`
+            );
+            resolve();
+            return;
+          }
+
+          reject(
+            new Error(
+              `Port ${MOCK_API_PORT} is already in use by a non-mock service or a mock server with a different scenario`
+            )
+          );
+        })();
       } else {
+        cleanupListeners();
         reject(err);
       }
     });
   });
 
-  return server;
+  return reusingExistingServer ? null : server;
 }
 
-export function stopMockApiServer(server: http.Server): Promise<void> {
+export function stopMockApiServer(server: http.Server | null): Promise<void> {
   return new Promise((resolve) => {
+    if (!server) {
+      resolve();
+      return;
+    }
     server.close(() => {
+      resolve();
+    });
+    server.once('error', () => {
       resolve();
     });
   });

@@ -237,7 +237,7 @@ async function runDebugSession(app: TestApp, scenario: RouteHandlerName) {
 
   // Start mock API server for SSR and browser requests
   const mockApiServer = await startMockApiServer(scenario as any);
-  console.log(`🔧 Mock API server started on port ${MOCK_API_PORT}`);
+  console.log(`🔧 Mock API server ready on port ${MOCK_API_PORT}`);
 
   const serverProcess = await startTestApp(app);
 
