@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it, vi } from 'vitest';
-import { PathLocaleDriver } from '../drivers/path-locale-driver';
+import { PathLocaleDriver } from '@18ways/core/path-locale-driver';
 
 const PATH_ROUTING = {
   exclude: ['/dashboard'],

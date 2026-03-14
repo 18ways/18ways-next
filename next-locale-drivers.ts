@@ -1,24 +1,30 @@
-import { createPathLocaleEngine } from '@18ways/core/path-locale-driver';
 import {
   BaseLocaleDriver,
   BrowserPreferenceDriver,
-  PathLocaleDriver,
   SessionCookieDriver,
-  createNextLocaleDrivers,
-  type NextLocaleCookieWriteOptions,
-  type NextLocaleDriverContext,
+  type LocaleCookieWriteOptions,
+} from '@18ways/core/locale-drivers';
+import {
+  PathLocaleDriver,
+  createPathLocaleDrivers,
+  createPathLocaleEngine,
+  type PathLocaleDriverContext,
   type PathLocaleResolution,
-} from './drivers';
+} from '@18ways/core/path-locale-driver';
+
+export type NextLocaleCookieWriteOptions = LocaleCookieWriteOptions;
+export type NextLocaleDriverContext = PathLocaleDriverContext;
 
 export {
   BaseLocaleDriver,
   BrowserPreferenceDriver,
   PathLocaleDriver,
   SessionCookieDriver,
-  createNextLocaleDrivers,
-  type NextLocaleCookieWriteOptions,
-  type NextLocaleDriverContext,
   type PathLocaleResolution,
+};
+
+export const createNextLocaleDrivers = <TContext extends NextLocaleDriverContext>() => {
+  return createPathLocaleDrivers<TContext>();
 };
 
 export const createNextLocaleEngine = <TContext extends NextLocaleDriverContext>(options: {
