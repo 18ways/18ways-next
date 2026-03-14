@@ -12,6 +12,11 @@ import {
 import { createNextLocaleEngine, type NextLocaleDriverContext } from './next-locale-drivers';
 import { useLocaleRuntimePathRouting } from './next-locale-runtime';
 
+type WaysWindow = Window &
+  typeof globalThis & {
+    __18WAYS_ACCEPTED_LOCALES__?: string[];
+  };
+
 type ClientLocaleSyncContext = NextLocaleDriverContext;
 
 const createClientLocaleSyncContext = (input: {
@@ -34,13 +39,14 @@ const createClientLocaleSyncContext = (input: {
 };
 
 const readAcceptedLocalesFromWindow = (): string[] => {
-  if (typeof window === 'undefined' || !Array.isArray(window.__18WAYS_ACCEPTED_LOCALES__)) {
+  const waysWindow = typeof window === 'undefined' ? null : (window as WaysWindow);
+  if (!waysWindow || !Array.isArray(waysWindow.__18WAYS_ACCEPTED_LOCALES__)) {
     return [];
   }
 
   return Array.from(
     new Set(
-      window.__18WAYS_ACCEPTED_LOCALES__
+      waysWindow.__18WAYS_ACCEPTED_LOCALES__
         .map((locale) => recognizeLocale(locale))
         .filter((locale): locale is string => Boolean(locale))
         .map((locale) => canonicalizeLocale(locale))
