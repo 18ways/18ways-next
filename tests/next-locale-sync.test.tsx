@@ -74,7 +74,7 @@ describe('LocalePathSync', () => {
     view.rerender(<LocalePathSync pathRouting={PATH_ROUTING} />);
 
     await waitFor(() => {
-      expect(router.replace).toHaveBeenCalledWith('/es-ES/docs');
+      expect(router.replace).toHaveBeenCalledWith('/es-ES/docs', { scroll: false });
       expect(document.cookie).toContain('18ways_locale=es-ES');
       expect(setCurrentLocale).toHaveBeenCalledWith('es-ES');
     });

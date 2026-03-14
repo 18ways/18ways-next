@@ -2,128 +2,29 @@
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback } from 'react';
+import { readAcceptedLocalesFromWindow } from '@18ways/core/client-accepted-locales';
+import { markClientLocaleSyncHandled } from '@18ways/core/client-locale-coordination';
 import { useCurrentLocale, useSetCurrentLocale } from '@18ways/react';
 import {
   WaysPathRoutingConfig,
-  buildLocalizedPathname,
-  canonicalizeLocale,
   extractRecognizedLocalePrefix,
   isPathRoutingEnabled,
+  localizePathname,
   normalizePathname,
   recognizeLocale,
+  stripLocalePrefix,
 } from '@18ways/core/i18n-shared';
 import { createNextLocaleEngine, type NextLocaleDriverContext } from './next-locale-drivers';
 import { useLocaleRuntimePathRouting } from './next-locale-runtime';
+import { navigateClientLocaleHref } from './client-navigation';
 
-type WaysWindow = Window &
-  typeof globalThis & {
-    __18WAYS_ACCEPTED_LOCALES__?: string[];
-  };
-
-const normalizeLocale = (locale: string): string => (recognizeLocale(locale) || '').toLowerCase();
+export { localizePathname, stripLocalePrefix };
 
 const resolvePathRouting = (
   explicitPathRouting: WaysPathRoutingConfig | undefined,
   runtimePathRouting: WaysPathRoutingConfig | undefined
 ): WaysPathRoutingConfig | undefined => {
   return explicitPathRouting || runtimePathRouting;
-};
-
-const readAcceptedLocalesFromWindow = (): string[] => {
-  const waysWindow = typeof window === 'undefined' ? null : (window as WaysWindow);
-  if (!waysWindow || !Array.isArray(waysWindow.__18WAYS_ACCEPTED_LOCALES__)) {
-    return [];
-  }
-
-  return Array.from(
-    new Set(
-      waysWindow.__18WAYS_ACCEPTED_LOCALES__
-        .map((locale) => recognizeLocale(locale))
-        .filter((locale): locale is string => Boolean(locale))
-        .map((locale) => canonicalizeLocale(locale))
-    )
-  );
-};
-
-const matchesLocaleSegment = (
-  segment: string,
-  options?: { locale?: string; acceptedLocales?: string[] }
-): boolean => {
-  const recognizedSegment = recognizeLocale(segment);
-  if (!recognizedSegment) {
-    return false;
-  }
-
-  const normalizedSegment = normalizeLocale(recognizedSegment);
-  if (!normalizedSegment) {
-    return false;
-  }
-
-  if (options?.acceptedLocales?.length) {
-    return options.acceptedLocales.some((locale) => normalizeLocale(locale) === normalizedSegment);
-  }
-
-  if (options?.locale) {
-    return normalizeLocale(options.locale) === normalizedSegment;
-  }
-
-  return true;
-};
-
-export const stripLocalePrefix = (
-  pathname: string,
-  options?: { locale?: string; acceptedLocales?: string[] }
-): string => {
-  const normalizedPathname = normalizePathname(pathname);
-  const segments = normalizedPathname.split('/').filter(Boolean);
-  if (!segments.length) {
-    return '/';
-  }
-
-  if (!matchesLocaleSegment(segments[0], options)) {
-    return normalizedPathname;
-  }
-
-  const remainingSegments = segments.slice(1);
-  return remainingSegments.length ? `/${remainingSegments.join('/')}` : '/';
-};
-
-export const localizePathname = (
-  pathname: string,
-  locale: string,
-  options?: {
-    acceptedLocales?: string[];
-    currentLocale?: string;
-    pathRouting?: WaysPathRoutingConfig;
-  }
-): string => {
-  const recognizedLocale = recognizeLocale(locale);
-  if (!recognizedLocale) {
-    return normalizePathname(pathname);
-  }
-
-  const normalizedPathname = normalizePathname(pathname);
-  const effectivePathRouting = options?.pathRouting;
-  if (!effectivePathRouting) {
-    return normalizedPathname;
-  }
-
-  let basePathname = stripLocalePrefix(normalizedPathname, {
-    locale: options?.currentLocale,
-    acceptedLocales: options?.acceptedLocales,
-  });
-
-  // If current locale state is stale (for example after a redirect),
-  // avoid stacking duplicate locale prefixes like /ja-JP/ja-JP.
-  if (basePathname === normalizedPathname) {
-    basePathname = stripLocalePrefix(normalizedPathname, { locale: recognizedLocale });
-  }
-
-  if (!isPathRoutingEnabled(basePathname, effectivePathRouting)) {
-    return basePathname;
-  }
-
-  return buildLocalizedPathname(basePathname, recognizedLocale);
 };
 
 export const useUnlocalizedPathname = (options?: {
@@ -261,6 +162,9 @@ export const useLocale = (
         typeof setLocaleOptions?.persistLocaleCookie === 'boolean'
           ? setLocaleOptions.persistLocaleCookie
           : options?.persistLocaleCookie;
+      if (effectivePathRouting) {
+        markClientLocaleSyncHandled(recognizedNextLocale);
+      }
       const { context } = createClientLocaleEngineContext({
         pathname: normalizedPathname,
         currentLocale: locale,
@@ -270,12 +174,7 @@ export const useLocale = (
         setCurrentLocale,
         navigateToPathname: (nextLocalizedPathname) => {
           const href = `${nextLocalizedPathname}${search ? `?${search}` : ''}${hash}`;
-          if (setLocaleOptions?.history === 'push') {
-            router.push(href);
-            return;
-          }
-
-          router.replace(href);
+          navigateClientLocaleHref(router, href, setLocaleOptions?.history || 'replace');
         },
         onLocaleSynced: () => {
           router.refresh();

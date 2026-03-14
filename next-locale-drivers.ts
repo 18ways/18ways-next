@@ -1,5 +1,4 @@
-import type { LocaleDriver } from '@18ways/core/locale-engine';
-import { createLocaleEngine } from '@18ways/core/locale-drivers';
+import { createPathLocaleEngine } from '@18ways/core/path-locale-driver';
 import {
   BaseLocaleDriver,
   BrowserPreferenceDriver,
@@ -26,9 +25,5 @@ export const createNextLocaleEngine = <TContext extends NextLocaleDriverContext>
   baseLocale: string;
   acceptedLocales?: string[];
 }) => {
-  return createLocaleEngine<TContext>({
-    baseLocale: options.baseLocale,
-    acceptedLocales: options.acceptedLocales,
-    extraDrivers: [PathLocaleDriver as LocaleDriver<TContext>],
-  });
+  return createPathLocaleEngine<TContext>(options);
 };
