@@ -12,7 +12,9 @@ const router = {
 let pathname = '/';
 let searchParams = new URLSearchParams('foo=1');
 let currentLocale = 'en-GB';
-const setCurrentLocale = vi.fn();
+const setCurrentLocale = vi.fn((nextLocale: string) => {
+  currentLocale = nextLocale;
+});
 
 vi.mock('next/navigation', () => ({
   usePathname: () => pathname,
@@ -26,6 +28,7 @@ vi.mock('@18ways/react', () => ({
 }));
 
 import { useLocale } from '../next-client';
+import { LocalePathSync } from '../next-locale-sync';
 
 const PATH_ROUTING: WaysPathRoutingConfig = {
   exclude: ['/dashboard'],
@@ -35,6 +38,15 @@ const LocaleChanger = ({ pathRouting }: { pathRouting?: WaysPathRoutingConfig })
   const { setLocale } = useLocale({ pathRouting });
 
   return <button onClick={() => setLocale('es-ES')}>Switch</button>;
+};
+
+const LocaleChangerWithPathSync = () => {
+  return (
+    <>
+      <LocalePathSync pathRouting={PATH_ROUTING} />
+      <LocaleChanger pathRouting={PATH_ROUTING} />
+    </>
+  );
 };
 
 const LocaleChangerWithDefaults = () => {
@@ -57,7 +69,7 @@ describe('useLocale', () => {
     router.push.mockReset();
     router.replace.mockReset();
     router.refresh.mockReset();
-    setCurrentLocale.mockReset();
+    setCurrentLocale.mockClear();
     document.cookie = '18ways_locale=; Max-Age=0; Path=/';
     document.cookie =
       '18ways_cookie_consent=' +
@@ -83,15 +95,34 @@ describe('useLocale', () => {
 
   it('uses localized path navigation when routing is enabled', async () => {
     pathname = '/en-GB/docs';
+    window.history.replaceState({}, '', '/en-GB/docs?foo=1');
 
     render(<LocaleChanger pathRouting={PATH_ROUTING} />);
     fireEvent.click(screen.getByRole('button', { name: 'Switch' }));
 
+    expect(window.location.pathname).toBe('/es-ES/docs');
+    expect(window.location.search).toBe('?foo=1');
     expect(document.cookie).toContain('18ways_locale=es-ES');
     await waitFor(() => {
-      expect(router.replace).toHaveBeenCalledWith('/es-ES/docs?foo=1');
+      expect(router.replace).toHaveBeenCalledWith('/es-ES/docs?foo=1', { scroll: false });
       expect(router.refresh).not.toHaveBeenCalled();
       expect(setCurrentLocale).toHaveBeenCalledWith('es-ES');
+    });
+  });
+
+  it('does not duplicate driver writes when LocalePathSync is mounted beside useLocale', async () => {
+    pathname = '/en-GB/docs';
+    window.history.replaceState({}, '', '/en-GB/docs?foo=1');
+
+    render(<LocaleChangerWithPathSync />);
+    fireEvent.click(screen.getByRole('button', { name: 'Switch' }));
+
+    await waitFor(() => {
+      expect(router.replace).toHaveBeenCalledTimes(1);
+      expect(router.replace).toHaveBeenCalledWith('/es-ES/docs?foo=1', { scroll: false });
+      expect(setCurrentLocale).toHaveBeenCalledTimes(1);
+      expect(setCurrentLocale).toHaveBeenCalledWith('es-ES');
+      expect(document.cookie).toContain('18ways_locale=es-ES');
     });
   });
 

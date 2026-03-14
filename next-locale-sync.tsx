@@ -2,20 +2,17 @@
 
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef } from 'react';
+import { readAcceptedLocalesFromWindow } from '@18ways/core/client-accepted-locales';
+import { consumeHandledClientLocaleSync } from '@18ways/core/client-locale-coordination';
 import { useCurrentLocale, useSetCurrentLocale } from '@18ways/react';
 import {
   WaysPathRoutingConfig,
-  canonicalizeLocale,
   normalizePathname,
   recognizeLocale,
 } from '@18ways/core/i18n-shared';
 import { createNextLocaleEngine, type NextLocaleDriverContext } from './next-locale-drivers';
 import { useLocaleRuntimePathRouting } from './next-locale-runtime';
-
-type WaysWindow = Window &
-  typeof globalThis & {
-    __18WAYS_ACCEPTED_LOCALES__?: string[];
-  };
+import { navigateClientLocaleHref } from './client-navigation';
 
 type ClientLocaleSyncContext = NextLocaleDriverContext;
 
@@ -38,22 +35,6 @@ const createClientLocaleSyncContext = (input: {
     navigateToPathname: input.navigateToPathname,
     onLocaleSynced: input.onLocaleSynced,
   };
-};
-
-const readAcceptedLocalesFromWindow = (): string[] => {
-  const waysWindow = typeof window === 'undefined' ? null : (window as WaysWindow);
-  if (!waysWindow || !Array.isArray(waysWindow.__18WAYS_ACCEPTED_LOCALES__)) {
-    return [];
-  }
-
-  return Array.from(
-    new Set(
-      waysWindow.__18WAYS_ACCEPTED_LOCALES__
-        .map((locale) => recognizeLocale(locale))
-        .filter((locale): locale is string => Boolean(locale))
-        .map((locale) => canonicalizeLocale(locale))
-    )
-  );
 };
 
 const resolveClientLocale = async (input: {
@@ -129,6 +110,12 @@ export const LocalePathSync = ({ pathRouting }: { pathRouting?: WaysPathRoutingC
   const hasStartedInitialLocaleResolutionRef = useRef(false);
   const hasCompletedInitialLocaleResolutionRef = useRef(false);
 
+  const replacePathname = (nextPathname: string) => {
+    const search = window.location.search || '';
+    const hash = window.location.hash || '';
+    navigateClientLocaleHref(router, `${nextPathname}${search}${hash}`);
+  };
+
   useEffect(() => {
     localeRef.current = currentLocale;
   }, [currentLocale]);
@@ -159,11 +146,7 @@ export const LocalePathSync = ({ pathRouting }: { pathRouting?: WaysPathRoutingC
       acceptedLocales: acceptedLocalesRef.current,
       pathRouting: effectivePathRouting,
       setCurrentLocale,
-      navigateToPathname: (nextPathname) => {
-        const search = window.location.search || '';
-        const hash = window.location.hash || '';
-        router.replace(`${nextPathname}${search}${hash}`);
-      },
+      navigateToPathname: replacePathname,
     }).finally(() => {
       if (cancelled) {
         return;
@@ -182,6 +165,10 @@ export const LocalePathSync = ({ pathRouting }: { pathRouting?: WaysPathRoutingC
       return;
     }
 
+    if (consumeHandledClientLocaleSync(currentLocale)) {
+      return;
+    }
+
     void syncClientLocale({
       targetLocale: currentLocale,
       pathname,
@@ -189,11 +176,7 @@ export const LocalePathSync = ({ pathRouting }: { pathRouting?: WaysPathRoutingC
       acceptedLocales: acceptedLocalesRef.current,
       pathRouting: effectivePathRouting,
       setCurrentLocale,
-      navigateToPathname: (nextPathname) => {
-        const search = window.location.search || '';
-        const hash = window.location.hash || '';
-        router.replace(`${nextPathname}${search}${hash}`);
-      },
+      navigateToPathname: replacePathname,
     });
   }, [currentLocale, effectivePathRouting, pathname, router, setCurrentLocale]);
 
@@ -208,11 +191,7 @@ export const LocalePathSync = ({ pathRouting }: { pathRouting?: WaysPathRoutingC
       acceptedLocales: acceptedLocalesRef.current,
       pathRouting: pathRoutingRef.current,
       setCurrentLocale,
-      navigateToPathname: (nextPathname) => {
-        const search = window.location.search || '';
-        const hash = window.location.hash || '';
-        router.replace(`${nextPathname}${search}${hash}`);
-      },
+      navigateToPathname: replacePathname,
     });
     const localeEngine = createNextLocaleEngine<ClientLocaleSyncContext>({
       baseLocale: listenerContext.baseLocale,
@@ -230,11 +209,7 @@ export const LocalePathSync = ({ pathRouting }: { pathRouting?: WaysPathRoutingC
         acceptedLocales: acceptedLocalesRef.current,
         pathRouting: pathRoutingRef.current,
         setCurrentLocale,
-        navigateToPathname: (nextPathname) => {
-          const search = window.location.search || '';
-          const hash = window.location.hash || '';
-          router.replace(`${nextPathname}${search}${hash}`);
-        },
+        navigateToPathname: replacePathname,
       });
     };
 
