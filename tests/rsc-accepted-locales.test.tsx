@@ -1,0 +1,66 @@
+import React from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { render, waitFor } from '@testing-library/react';
+import { WAYS_LOCALIZED_PATHNAME_HEADER_NAME, WAYS_PATHNAME_HEADER_NAME } from '../next-shared';
+
+const mockState = vi.hoisted(() => ({
+  headerStore: new Headers(),
+  cookieGet: vi.fn(),
+}));
+
+vi.mock('next/headers', () => ({
+  headers: vi.fn(async () => mockState.headerStore),
+  cookies: vi.fn(async () => ({
+    get: mockState.cookieGet,
+  })),
+}));
+
+vi.mock('next/navigation', () => ({
+  redirect: vi.fn(),
+}));
+
+vi.mock('@18ways/core/common', async () => {
+  const actual = await vi.importActual<typeof import('@18ways/core/common')>('@18ways/core/common');
+
+  return {
+    ...actual,
+    fetchAcceptedLocales: vi.fn(async () => ['en-GB', 'es-ES']),
+  };
+});
+
+describe('rsc ways accepted locales handoff', () => {
+  beforeEach(() => {
+    mockState.headerStore = new Headers({
+      'accept-language': 'es-ES,es;q=0.9',
+      host: '18ways.com',
+      'x-forwarded-proto': 'https',
+      [WAYS_PATHNAME_HEADER_NAME]: '/docs',
+      [WAYS_LOCALIZED_PATHNAME_HEADER_NAME]: '/es-ES/docs',
+    });
+    mockState.cookieGet.mockReset();
+    mockState.cookieGet.mockReturnValue(undefined);
+    delete window.__18WAYS_ACCEPTED_LOCALES__;
+    delete window.__18WAYS_IN_MEMORY_TRANSLATIONS__;
+    vi.clearAllMocks();
+  });
+
+  it('does not refetch accepted locales on the client when next already resolved them', async () => {
+    const { fetchAcceptedLocales } = await import('@18ways/core/common');
+    const { Ways } = await import('../rsc');
+
+    const element = await Ways({
+      apiKey: 'test-api-key',
+      baseLocale: 'en-GB',
+      children: <div>Test App</div>,
+    });
+
+    expect(fetchAcceptedLocales).toHaveBeenCalledTimes(1);
+
+    render(element);
+
+    await waitFor(() => {
+      expect(window.__18WAYS_ACCEPTED_LOCALES__).toEqual(['en-GB', 'es-ES']);
+      expect(fetchAcceptedLocales).toHaveBeenCalledTimes(1);
+    });
+  });
+});
