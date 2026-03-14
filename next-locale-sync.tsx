@@ -21,6 +21,7 @@ const createClientLocaleSyncContext = (input: {
   pathRouting?: WaysPathRoutingConfig;
   setCurrentLocale: (locale: string) => void;
   navigateToPathname?: (pathname: string) => void;
+  onLocaleSynced?: (locale: string) => void;
 }): ClientLocaleSyncContext => {
   return {
     pathname: input.pathname,
@@ -30,6 +31,7 @@ const createClientLocaleSyncContext = (input: {
     currentLocale: input.currentLocale,
     setCurrentLocale: input.setCurrentLocale,
     navigateToPathname: input.navigateToPathname,
+    onLocaleSynced: input.onLocaleSynced,
   };
 };
 
@@ -54,6 +56,7 @@ const resolveClientLocale = async (input: {
   acceptedLocales?: string[];
   pathRouting?: WaysPathRoutingConfig;
   setCurrentLocale: (locale: string) => void;
+  navigateToPathname: (pathname: string) => void;
 }): Promise<void> => {
   const engineContext = createClientLocaleSyncContext({
     pathname: input.pathname,
@@ -61,18 +64,15 @@ const resolveClientLocale = async (input: {
     acceptedLocales: input.acceptedLocales,
     pathRouting: input.pathRouting,
     setCurrentLocale: input.setCurrentLocale,
+    navigateToPathname: input.navigateToPathname,
+    onLocaleSynced: input.setCurrentLocale,
   });
   const localeEngine = createNextLocaleEngine<ClientLocaleSyncContext>({
     baseLocale: engineContext.baseLocale,
     acceptedLocales: engineContext.acceptedLocales,
   });
-  const resolution = await localeEngine.resolve(engineContext);
 
-  if (resolution.locale === input.currentLocale) {
-    return;
-  }
-
-  input.setCurrentLocale(resolution.locale);
+  await localeEngine.resolveAndSync(engineContext, { mode: 'changed-only' });
 };
 
 const syncClientLocale = async (input: {
@@ -120,7 +120,8 @@ export const LocalePathSync = ({ pathRouting }: { pathRouting?: WaysPathRoutingC
   const localeRef = useRef(currentLocale);
   const acceptedLocalesRef = useRef(readAcceptedLocalesFromWindow());
   const pathRoutingRef = useRef(effectivePathRouting);
-  const hasResolvedInitialLocaleRef = useRef(false);
+  const hasStartedInitialLocaleResolutionRef = useRef(false);
+  const hasCompletedInitialLocaleResolutionRef = useRef(false);
 
   useEffect(() => {
     localeRef.current = currentLocale;
@@ -135,19 +136,60 @@ export const LocalePathSync = ({ pathRouting }: { pathRouting?: WaysPathRoutingC
   });
 
   useEffect(() => {
-    if (hasResolvedInitialLocaleRef.current) {
+    if (
+      hasStartedInitialLocaleResolutionRef.current ||
+      hasCompletedInitialLocaleResolutionRef.current ||
+      typeof window === 'undefined'
+    ) {
       return;
     }
 
-    hasResolvedInitialLocaleRef.current = true;
+    let cancelled = false;
+    hasStartedInitialLocaleResolutionRef.current = true;
+
     void resolveClientLocale({
       pathname,
       currentLocale,
       acceptedLocales: acceptedLocalesRef.current,
       pathRouting: effectivePathRouting,
       setCurrentLocale,
+      navigateToPathname: (nextPathname) => {
+        const search = window.location.search || '';
+        const hash = window.location.hash || '';
+        router.replace(`${nextPathname}${search}${hash}`);
+      },
+    }).finally(() => {
+      if (cancelled) {
+        return;
+      }
+
+      hasCompletedInitialLocaleResolutionRef.current = true;
     });
-  }, [currentLocale, effectivePathRouting, pathname, setCurrentLocale]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentLocale, effectivePathRouting, pathname, router, setCurrentLocale]);
+
+  useEffect(() => {
+    if (!hasCompletedInitialLocaleResolutionRef.current || typeof window === 'undefined') {
+      return;
+    }
+
+    void syncClientLocale({
+      targetLocale: currentLocale,
+      pathname,
+      currentLocale,
+      acceptedLocales: acceptedLocalesRef.current,
+      pathRouting: effectivePathRouting,
+      setCurrentLocale,
+      navigateToPathname: (nextPathname) => {
+        const search = window.location.search || '';
+        const hash = window.location.hash || '';
+        router.replace(`${nextPathname}${search}${hash}`);
+      },
+    });
+  }, [currentLocale, effectivePathRouting, pathname, router, setCurrentLocale]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {

@@ -3,18 +3,16 @@
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback } from 'react';
 import { useCurrentLocale, useSetCurrentLocale } from '@18ways/react';
-import { LocaleEngine } from '@18ways/core/locale-engine';
 import {
   WaysPathRoutingConfig,
   buildLocalizedPathname,
   canonicalizeLocale,
   extractRecognizedLocalePrefix,
-  findSupportedLocale,
   isPathRoutingEnabled,
   normalizePathname,
   recognizeLocale,
 } from '@18ways/core/i18n-shared';
-import { createNextLocaleDrivers, type NextLocaleDriverContext } from './next-locale-drivers';
+import { createNextLocaleEngine, type NextLocaleDriverContext } from './next-locale-drivers';
 import { useLocaleRuntimePathRouting } from './next-locale-runtime';
 
 const normalizeLocale = (locale: string): string => (recognizeLocale(locale) || '').toLowerCase();
@@ -277,25 +275,9 @@ export const useLocale = (
           router.refresh();
         },
       });
-      const localeEngine = new LocaleEngine<ClientLocaleEngineContext>({
+      const localeEngine = createNextLocaleEngine<ClientLocaleEngineContext>({
         baseLocale: context.baseLocale,
-        drivers: createNextLocaleDrivers<ClientLocaleEngineContext>(),
-        normalizeLocale: (candidateLocale) => {
-          const recognized = recognizeLocale(candidateLocale);
-          if (!recognized) {
-            return '';
-          }
-
-          if (recognized === context.baseLocale) {
-            return recognized;
-          }
-
-          if (!acceptedLocales.length) {
-            return recognized;
-          }
-
-          return findSupportedLocale(recognized, acceptedLocales) || '';
-        },
+        acceptedLocales,
       });
 
       void localeEngine.sync(context, recognizedNextLocale, { mode: 'all' }).catch((error) => {
