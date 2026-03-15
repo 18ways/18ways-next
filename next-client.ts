@@ -73,7 +73,6 @@ export const useLocalizedHref = (options?: {
 };
 
 export type SetLocaleOptions = {
-  history?: 'replace' | 'push';
   preserveSearch?: boolean;
   preserveHash?: boolean;
   persistLocaleCookie?: boolean;
@@ -174,7 +173,7 @@ export const useLocale = (
         setCurrentLocale,
         navigateToPathname: (nextLocalizedPathname) => {
           const href = `${nextLocalizedPathname}${search ? `?${search}` : ''}${hash}`;
-          navigateClientLocaleHref(router, href, setLocaleOptions?.history || 'replace');
+          navigateClientLocaleHref(router, href);
         },
         onLocaleSynced: () => {
           router.refresh();
