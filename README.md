@@ -20,7 +20,7 @@ import type { ReactNode } from 'react';
 import { init as initWays } from '@18ways/next/server';
 
 const { WaysRoot } = initWays({
-  apiKey: 'pk_live_GET_ME_FROM_YOUR_DASHBOARD_...',
+  apiKey: 'YOUR_18WAYS_PUBLIC_API_KEY',
   baseLocale: 'en-GB',
 });
 
