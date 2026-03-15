@@ -19,6 +19,7 @@ import {
   fetchAcceptedLocales,
   resolveOrigin,
 } from '@18ways/core/common';
+import { readPreferredLocalesFromAcceptLanguageHeader } from '@18ways/core/locale-drivers';
 import { createNextLocaleEngine, type NextLocaleDriverContext } from './next-locale-drivers';
 import { WAYS_LOCALIZED_PATHNAME_HEADER_NAME, WAYS_PATHNAME_HEADER_NAME } from './next-shared';
 import { NextReactWays } from './next-react-client';
@@ -36,12 +37,13 @@ const resolveLocaleFromRequest = async (
 ): Promise<{ locale: string; supportedLocales: string[]; requestOrigin: string }> => {
   const cookieStore = await cookies();
   const headerStore = await headers();
+  const acceptLanguageHeader = headerStore.get('accept-language');
 
   const fallbackLocale =
     props?.locale ||
     props?.baseLocale ||
     cookieStore.get(WAYS_LOCALE_COOKIE_NAME)?.value ||
-    headerStore.get('accept-language')?.split(',')[0] ||
+    readPreferredLocalesFromAcceptLanguageHeader(acceptLanguageHeader)[0] ||
     'en-GB';
 
   const requestOrigin = resolveOrigin({
@@ -65,7 +67,7 @@ const resolveLocaleFromRequest = async (
     acceptedLocales: supportedLocales,
     pathRouting: props?.pathRouting,
     readCookie: (cookieName) => cookieStore.get(cookieName)?.value,
-    acceptLanguageHeader: headerStore.get('accept-language'),
+    acceptLanguageHeader,
   };
   const localeEngine = createNextLocaleEngine<NextLocaleDriverContext>({
     baseLocale: fallbackLocale,

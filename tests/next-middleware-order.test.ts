@@ -110,6 +110,48 @@ describe('resolveWaysMiddleware locale engine', () => {
     }
   });
 
+  it('walks accept-language preferences by q until it finds a supported locale', async () => {
+    const resolution = await resolveWaysMiddleware(
+      createRequest({
+        pathname: '/docs',
+        acceptLanguage: 'es-MX;q=1, fr-CA;q=0.9, en-US;q=0.8',
+      }),
+      {
+        baseLocale: 'en-GB',
+        acceptedLocales: ['fr-FR', 'en-GB'],
+        pathRouting: PATH_ROUTING,
+        supportedLocales: ['fr-FR', 'en-GB'],
+      }
+    );
+
+    expect(resolution.locale).toBe('fr-FR');
+    expect(resolution.action).toBe('redirect');
+    if (resolution.action === 'redirect') {
+      expect(resolution.redirectPathname).toBe('/fr-FR/docs');
+    }
+  });
+
+  it('prefers a later exact accept-language match before an earlier fallback match', async () => {
+    const resolution = await resolveWaysMiddleware(
+      createRequest({
+        pathname: '/docs',
+        acceptLanguage: 'fr-FR;q=0.2, en-US;q=0.9',
+      }),
+      {
+        baseLocale: 'en-GB',
+        acceptedLocales: ['fr-FR', 'en-GB'],
+        pathRouting: PATH_ROUTING,
+        supportedLocales: ['fr-FR', 'en-GB'],
+      }
+    );
+
+    expect(resolution.locale).toBe('fr-FR');
+    expect(resolution.action).toBe('redirect');
+    if (resolution.action === 'redirect') {
+      expect(resolution.redirectPathname).toBe('/fr-FR/docs');
+    }
+  });
+
   it('preserves recognizable route segments when redirecting to the resolved locale', async () => {
     const resolution = await resolveWaysMiddleware(
       createRequest({
