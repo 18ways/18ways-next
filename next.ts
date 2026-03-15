@@ -6,8 +6,6 @@ import {
   getWaysHtmlAttrs as getWaysHtmlAttrsBase,
 } from './rsc';
 import type { WaysProps, WaysRootProps } from '@18ways/react';
-import { LocalePathSync } from './next-locale-sync';
-import { LocaleRuntimeConfigProvider } from './next-locale-runtime';
 import {
   SUPPORTED_LOCALES,
   WAYS_LOCALE_COOKIE_NAME,
@@ -32,6 +30,7 @@ import { createNextRequestInitDecorator } from './next-request-init';
 import {
   WAYS_LOCALE_HEADER_NAME,
   WAYS_LOCALIZED_PATHNAME_HEADER_NAME,
+  WAYS_PERSIST_LOCALE_COOKIE_HEADER_NAME,
   WAYS_PATHNAME_HEADER_NAME,
 } from './next-shared';
 
@@ -42,8 +41,14 @@ export {
 };
 export type { WaysProps, WaysRootProps };
 
-export type WaysNextInitOptions = Omit<WaysRootProps, 'children' | 'context'> & {
+export type WaysPersistLocaleCookiePolicy = boolean | ((request: NextRequest) => boolean);
+
+export type WaysNextInitOptions = Omit<
+  WaysRootProps,
+  'children' | 'context' | 'persistLocaleCookie'
+> & {
   pathRouting?: WaysPathRoutingConfig;
+  persistLocaleCookie?: WaysPersistLocaleCookiePolicy;
 };
 
 export type WaysRootComponentProps = {
@@ -82,7 +87,6 @@ type WaysApplyTransforms = {
 
 export type WaysInitApplyOptions = WaysApplyTransforms & {
   syncMode?: LocaleSyncMode;
-  persistLocaleCookie?: boolean;
 };
 
 export type WaysNextInitResult = {
@@ -93,6 +97,17 @@ export type WaysNextInitResult = {
     options?: { origin?: string }
   ) => Promise<Record<string, any>>;
   waysMiddleware: (request: NextRequest, options?: WaysInitApplyOptions) => Promise<NextResponse>;
+};
+
+const resolvePersistLocaleCookiePolicy = (
+  policy: WaysPersistLocaleCookiePolicy | undefined,
+  request: NextRequest
+): boolean | undefined => {
+  if (typeof policy === 'function') {
+    return policy(request);
+  }
+
+  return policy;
 };
 
 const METADATA_TRANSLATION_CONTEXT_KEY = '__18ways_metadata__';
@@ -326,12 +341,12 @@ const resolveMetadataInput = async (params: {
 export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
   const { pathRouting, ...waysRootOptions } = options;
   const defaultAcceptedLocales = waysRootOptions.acceptedLocales;
-  const defaultMiddlewareOptions = createWaysMiddlewareOptions({
+  const defaultMiddlewareOptions: InternalWaysMiddlewareOptions = {
     baseLocale: waysRootOptions.baseLocale,
     pathRouting,
     acceptedLocales: defaultAcceptedLocales,
     supportedLocales: defaultAcceptedLocales,
-  });
+  };
   const rootProps = { ...waysRootOptions };
   const localeProps: Partial<
     Pick<WaysRootProps, 'locale' | 'baseLocale' | 'apiKey' | '_apiUrl'>
@@ -347,7 +362,18 @@ export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
     pathRouting,
   };
   const WaysRoot = async ({ children }: WaysRootComponentProps): Promise<React.JSX.Element> => {
-    return Ways({ ...rootProps, pathRouting, children });
+    const rootPersistLocaleCookie =
+      typeof waysRootOptions.persistLocaleCookie === 'boolean'
+        ? waysRootOptions.persistLocaleCookie
+        : undefined;
+
+    return Ways({
+      ...rootProps,
+      pathRouting,
+      children,
+      persistLocaleCookie: rootPersistLocaleCookie,
+      _persistLocaleCookiePolicy: waysRootOptions.persistLocaleCookie,
+    });
   };
 
   const htmlAttrs = async (): Promise<Record<string, string>> => {
@@ -427,12 +453,15 @@ export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
           })
         : [...SUPPORTED_LOCALES]);
 
-    const resolution = await resolveWaysMiddleware(request, {
+    const resolution = await resolveWaysMiddlewareInternal(request, {
       ...defaultMiddlewareOptions,
       acceptedLocales,
       supportedLocales: acceptedLocales,
       syncMode: applyOptions.syncMode,
-      persistLocaleCookie: applyOptions.persistLocaleCookie,
+      persistLocaleCookie: resolvePersistLocaleCookiePolicy(
+        waysRootOptions.persistLocaleCookie,
+        request
+      ),
     });
     return finalizeWaysMiddlewareResponse(request, resolution, applyOptions);
   };
@@ -447,28 +476,12 @@ export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
 
 type WaysNextProps = WaysProps & {
   pathRouting?: WaysPathRoutingConfig;
+  _persistLocaleCookiePolicy?: WaysPersistLocaleCookiePolicy;
 };
-const LocalePathSyncComponent = LocalePathSync as React.ComponentType<{
-  pathRouting?: WaysPathRoutingConfig;
-}>;
 
 export function Ways(props: WaysNextProps): React.JSX.Element {
   if ('apiKey' in props) {
-    const { pathRouting, ...serverWaysProps } = props;
-    const children = pathRouting
-      ? React.createElement(
-          LocaleRuntimeConfigProvider,
-          { pathRouting },
-          React.createElement(
-            React.Fragment,
-            null,
-            React.createElement(LocalePathSyncComponent, { pathRouting }),
-            props.children
-          )
-        )
-      : props.children;
-
-    return React.createElement(ServerWays, serverWaysProps, children);
+    return React.createElement(ServerWays, props, props.children);
   }
 
   return React.createElement(ServerWays, props, props.children);
@@ -491,10 +504,12 @@ export type WaysMiddlewareOptions = {
   syncMode?: LocaleSyncMode;
   acceptedLocales?: string[];
   supportedLocales?: string[];
-  persistLocaleCookie?: boolean;
 };
 
 export type WaysApplyOptions = WaysMiddlewareOptions & WaysApplyTransforms;
+type InternalWaysMiddlewareOptions = WaysMiddlewareOptions & {
+  persistLocaleCookie?: boolean;
+};
 
 export type WaysMiddlewareResolution =
   | {
@@ -541,7 +556,6 @@ export const createWaysMiddlewareOptions = (input: {
   syncMode?: LocaleSyncMode;
   acceptedLocales?: string[];
   supportedLocales?: string[];
-  persistLocaleCookie?: boolean;
 }): WaysMiddlewareOptions => {
   return {
     baseLocale: input.baseLocale,
@@ -549,7 +563,6 @@ export const createWaysMiddlewareOptions = (input: {
     syncMode: input.syncMode,
     acceptedLocales: input.acceptedLocales,
     supportedLocales: input.supportedLocales,
-    persistLocaleCookie: input.persistLocaleCookie,
   };
 };
 
@@ -632,30 +645,36 @@ const buildRequestHeaders = (
   request: NextRequest,
   locale: string,
   unlocalizedPathname: string,
-  localizedPathname: string
+  localizedPathname: string,
+  persistLocaleCookie: boolean
 ): Headers => {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set(WAYS_LOCALE_HEADER_NAME, locale);
   requestHeaders.set(WAYS_PATHNAME_HEADER_NAME, normalizePathname(unlocalizedPathname));
   requestHeaders.set(WAYS_LOCALIZED_PATHNAME_HEADER_NAME, normalizePathname(localizedPathname));
+  requestHeaders.set(
+    WAYS_PERSIST_LOCALE_COOKIE_HEADER_NAME,
+    persistLocaleCookie ? 'true' : 'false'
+  );
   return requestHeaders;
 };
 
-export const resolveWaysMiddleware = async (
+const resolveWaysMiddlewareInternal = async (
   request: NextRequest,
-  options?: WaysMiddlewareOptions
+  options?: InternalWaysMiddlewareOptions
 ): Promise<WaysMiddlewareResolution> => {
   const baseLocale = recognizeLocale(options?.baseLocale) || 'en-GB';
   const pathRouting = options?.pathRouting;
   const supportedLocales = options?.supportedLocales;
   const acceptedLocales = options?.acceptedLocales;
+  const persistLocaleCookie = options?.persistLocaleCookie !== false;
   const { context, state } = createWaysMiddlewareContext({
     request,
     baseLocale,
     pathRouting,
     supportedLocales,
     acceptedLocales,
-    persistLocaleCookie: options?.persistLocaleCookie,
+    persistLocaleCookie,
   });
   const engine = createNextLocaleEngine<WaysMiddlewareContext>({
     baseLocale,
@@ -670,7 +689,8 @@ export const resolveWaysMiddleware = async (
     request,
     resolution.locale,
     state.unlocalizedPathname,
-    state.localizedPathname
+    state.localizedPathname,
+    persistLocaleCookie
   );
   const cookieUpdates = Array.from(state.cookieUpdates.values());
 
@@ -706,6 +726,13 @@ export const resolveWaysMiddleware = async (
     requestHeaders,
     cookieUpdates,
   };
+};
+
+export const resolveWaysMiddleware = async (
+  request: NextRequest,
+  options?: WaysMiddlewareOptions
+): Promise<WaysMiddlewareResolution> => {
+  return resolveWaysMiddlewareInternal(request, options);
 };
 
 const applyLocaleCookies = (response: NextResponse, cookieUpdates: WaysCookieUpdate[]) => {
@@ -777,7 +804,7 @@ export const waysMiddleware = async (
   options: WaysApplyOptions = {}
 ): Promise<NextResponse> => {
   const { transformRequestHeaders, transformResponse, ...middlewareOptions } = options;
-  const resolution = await resolveWaysMiddleware(request, middlewareOptions);
+  const resolution = await resolveWaysMiddlewareInternal(request, middlewareOptions);
   return finalizeWaysMiddlewareResponse(request, resolution, {
     transformRequestHeaders,
     transformResponse,

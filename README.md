@@ -20,7 +20,7 @@ import type { ReactNode } from 'react';
 import { init as initWays } from '@18ways/next/server';
 
 const { WaysRoot } = initWays({
-  apiKey: 'pk_live_GET_ME_FROM_YOUR_DASHBOARD_...',
+  apiKey: 'YOUR_18WAYS_PUBLIC_API_KEY',
   baseLocale: 'en-GB',
 });
 
@@ -33,9 +33,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     </html>
   );
 }
+```
 
+```tsx
 // app/page.tsx
-('use client');
+'use client';
 
 import { LanguageSwitcher, Ways, T } from '@18ways/react';
 import { useLocale } from '@18ways/next/client';

@@ -28,6 +28,7 @@ vi.mock('@18ways/react', () => ({
 }));
 
 import { useLocale } from '../next-client';
+import { LocaleRuntimeConfigProvider } from '../next-locale-runtime';
 import { LocalePathSync } from '../next-locale-sync';
 
 const PATH_ROUTING: WaysPathRoutingConfig = {
@@ -140,20 +141,34 @@ describe('useLocale', () => {
     });
   });
 
-  it('skips locale cookie writes when persistence is disabled for the action', async () => {
+  it('inherits locale cookie persistence from the runtime config', async () => {
     pathname = '/dashboard/organizations';
 
-    const LocaleChangerWithoutPersistence = () => {
-      const { setLocale } = useLocale();
-
-      return (
-        <button onClick={() => setLocale('es-ES', { persistLocaleCookie: false })}>Switch</button>
-      );
-    };
-
-    render(<LocaleChangerWithoutPersistence />);
+    render(
+      <LocaleRuntimeConfigProvider persistLocaleCookie={false}>
+        <LocaleChangerWithDefaults />
+      </LocaleRuntimeConfigProvider>
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Switch' }));
 
     expect(document.cookie).not.toContain('18ways_locale=es-ES');
+  });
+
+  it('does not rewrite the locale cookie when LocalePathSync is mounted and runtime persistence is disabled', async () => {
+    pathname = '/en-GB/docs';
+    window.history.replaceState({}, '', '/en-GB/docs?foo=1');
+
+    render(
+      <LocaleRuntimeConfigProvider persistLocaleCookie={false}>
+        <LocaleChangerWithPathSync />
+      </LocaleRuntimeConfigProvider>
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Switch' }));
+
+    await waitFor(() => {
+      expect(router.replace).toHaveBeenCalledWith('/es-ES/docs?foo=1', { scroll: false });
+      expect(setCurrentLocale).toHaveBeenCalledWith('es-ES');
+      expect(document.cookie).not.toContain('18ways_locale=es-ES');
+    });
   });
 });
