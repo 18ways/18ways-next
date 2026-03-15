@@ -55,6 +55,35 @@ export type WaysMetadataFactory = (
   t: WaysMetadataTranslator
 ) => Record<string, any> | Promise<Record<string, any>>;
 export type WaysMetadataInput = Record<string, any> | WaysMetadataFactory;
+export type WaysApplyContext = {
+  request: NextRequest;
+  action: WaysMiddlewareResolution['action'];
+  locale: string;
+  unlocalizedPathname: string;
+  localizedPathname: string;
+  requestHeaders: Headers;
+  rewritePathname?: string;
+  redirectPathname?: string;
+};
+
+export type WaysRequestHeadersTransform = (
+  context: WaysApplyContext
+) => Headers | void | Promise<Headers | void>;
+
+export type WaysResponseTransform = (
+  response: NextResponse,
+  context: WaysApplyContext
+) => NextResponse | void | Promise<NextResponse | void>;
+
+type WaysApplyTransforms = {
+  transformRequestHeaders?: WaysRequestHeadersTransform;
+  transformResponse?: WaysResponseTransform;
+};
+
+export type WaysInitApplyOptions = WaysApplyTransforms & {
+  syncMode?: LocaleSyncMode;
+  persistLocaleCookie?: boolean;
+};
 
 export type WaysNextInitResult = {
   WaysRoot: (props: WaysRootComponentProps) => Promise<React.JSX.Element>;
@@ -63,10 +92,7 @@ export type WaysNextInitResult = {
     metadata?: WaysMetadataInput,
     options?: { origin?: string }
   ) => Promise<Record<string, any>>;
-  resolveWaysMiddlewareEdit: (
-    request: NextRequest,
-    options?: { syncMode?: LocaleSyncMode; persistLocaleCookie?: boolean }
-  ) => Promise<(createResponse: WaysMiddlewareResponseFactory) => NextResponse>;
+  applyWays: (request: NextRequest, options?: WaysInitApplyOptions) => Promise<NextResponse>;
 };
 
 const METADATA_TRANSLATION_CONTEXT_KEY = '__18ways_metadata__';
@@ -379,9 +405,9 @@ export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
     return deepMerged(translatedMetadata, waysMetadata);
   };
 
-  const resolveWaysMiddlewareEditFromInit = async (
+  const applyWaysFromInit = async (
     request: NextRequest,
-    middlewareOptions?: { syncMode?: LocaleSyncMode }
+    applyOptions: WaysInitApplyOptions = {}
   ) => {
     const resolvedBaseLocale = recognizeLocale(waysRootOptions.baseLocale) || 'en-GB';
     const acceptedLocales =
@@ -401,19 +427,21 @@ export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
           })
         : [...SUPPORTED_LOCALES]);
 
-    return resolveWaysMiddlewareEdit(request, {
+    const resolution = await resolveWaysMiddleware(request, {
       ...defaultMiddlewareOptions,
       acceptedLocales,
       supportedLocales: acceptedLocales,
-      syncMode: middlewareOptions?.syncMode,
+      syncMode: applyOptions.syncMode,
+      persistLocaleCookie: applyOptions.persistLocaleCookie,
     });
+    return applyWaysResolution(request, resolution, applyOptions);
   };
 
   return {
     WaysRoot,
     htmlAttrs,
     generateWaysMetadata,
-    resolveWaysMiddlewareEdit: resolveWaysMiddlewareEditFromInit,
+    applyWays: applyWaysFromInit,
   };
 };
 
@@ -465,6 +493,8 @@ export type WaysMiddlewareOptions = {
   supportedLocales?: string[];
   persistLocaleCookie?: boolean;
 };
+
+export type WaysApplyOptions = WaysMiddlewareOptions & WaysApplyTransforms;
 
 export type WaysMiddlewareResolution =
   | {
@@ -678,85 +708,84 @@ export const resolveWaysMiddleware = async (
   };
 };
 
-const copyResponseCookies = (source: NextResponse, target: NextResponse) => {
-  for (const cookie of source.cookies.getAll()) {
-    target.cookies.set(cookie);
-  }
-};
-
 const applyLocaleCookies = (response: NextResponse, cookieUpdates: WaysCookieUpdate[]) => {
   cookieUpdates.forEach((cookie) => {
     response.cookies.set(cookie.name, cookie.value, cookie.options);
   });
 };
 
-export type WaysMiddlewareResponseFactory = (options?: {
-  requestHeaders?: Headers;
-  rewritePathname?: string;
-}) => NextResponse;
-
-export const createWaysResponseEdit = (
+const createWaysApplyContext = (
   request: NextRequest,
   resolution: WaysMiddlewareResolution
-) => {
-  return (createResponse: WaysMiddlewareResponseFactory): NextResponse => {
-    if (resolution.action === 'redirect') {
-      const seedResponse = createResponse({
-        requestHeaders: resolution.requestHeaders,
-      });
-      const redirectUrl = request.nextUrl.clone();
-      redirectUrl.pathname = resolution.redirectPathname;
-      const response = NextResponse.redirect(redirectUrl);
-      copyResponseCookies(seedResponse, response);
-      applyLocaleCookies(response, resolution.cookieUpdates);
-      return response;
-    }
-
-    if (resolution.action === 'rewrite') {
-      const response = createResponse({
-        requestHeaders: resolution.requestHeaders,
-        rewritePathname: resolution.rewritePathname,
-      });
-      applyLocaleCookies(response, resolution.cookieUpdates);
-      return response;
-    }
-
-    const response = createResponse({
-      requestHeaders: resolution.requestHeaders,
-    });
-    applyLocaleCookies(response, resolution.cookieUpdates);
-    return response;
+): WaysApplyContext => {
+  return {
+    request,
+    action: resolution.action,
+    locale: resolution.locale,
+    unlocalizedPathname: resolution.unlocalizedPathname,
+    localizedPathname: resolution.localizedPathname,
+    requestHeaders: new Headers(resolution.requestHeaders),
+    rewritePathname: resolution.action === 'rewrite' ? resolution.rewritePathname : undefined,
+    redirectPathname: resolution.action === 'redirect' ? resolution.redirectPathname : undefined,
   };
 };
 
-export const resolveWaysMiddlewareEdit = async (
+const createWaysBaseResponse = (request: NextRequest, context: WaysApplyContext): NextResponse => {
+  if (context.action === 'redirect' && context.redirectPathname) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = context.redirectPathname;
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  if (context.action === 'rewrite' && context.rewritePathname) {
+    const rewriteUrl = request.nextUrl.clone();
+    rewriteUrl.pathname = context.rewritePathname;
+    return NextResponse.rewrite(rewriteUrl, {
+      request: {
+        headers: context.requestHeaders,
+      },
+    });
+  }
+
+  return NextResponse.next({
+    request: {
+      headers: context.requestHeaders,
+    },
+  });
+};
+
+const applyWaysResolution = async (
   request: NextRequest,
-  options?: WaysMiddlewareOptions
-) => {
-  const resolution = await resolveWaysMiddleware(request, options);
-  return createWaysResponseEdit(request, resolution);
+  resolution: WaysMiddlewareResolution,
+  transforms: WaysApplyTransforms = {}
+): Promise<NextResponse> => {
+  const context = createWaysApplyContext(request, resolution);
+  const transformedRequestHeaders = await transforms.transformRequestHeaders?.(context);
+  if (transformedRequestHeaders) {
+    context.requestHeaders = transformedRequestHeaders;
+  }
+
+  const response = createWaysBaseResponse(request, context);
+  applyLocaleCookies(response, resolution.cookieUpdates);
+
+  const transformedResponse = await transforms.transformResponse?.(response, context);
+  return transformedResponse || response;
+};
+
+export const applyWays = async (
+  request: NextRequest,
+  options: WaysApplyOptions = {}
+): Promise<NextResponse> => {
+  const { transformRequestHeaders, transformResponse, ...middlewareOptions } = options;
+  const resolution = await resolveWaysMiddleware(request, middlewareOptions);
+  return applyWaysResolution(request, resolution, {
+    transformRequestHeaders,
+    transformResponse,
+  });
 };
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
-  const resolution = await resolveWaysMiddleware(request);
-  const applyWays = createWaysResponseEdit(request, resolution);
-  return applyWays(({ requestHeaders, rewritePathname } = {}) => {
-    if (rewritePathname) {
-      const rewriteUrl = request.nextUrl.clone();
-      rewriteUrl.pathname = rewritePathname;
-      return NextResponse.rewrite(rewriteUrl, {
-        request: {
-          headers: requestHeaders || request.headers,
-        },
-      });
-    }
-
-    return NextResponse.next({
-      request: {
-        headers: requestHeaders || request.headers,
-      },
-    });
-  });
+  return applyWays(request);
 }
 
 export const config = {

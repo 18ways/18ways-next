@@ -47,7 +47,7 @@ describe('next init', () => {
       baseLocale: 'en-GB',
       _apiUrl: 'https://example.com/api',
     });
-    expect(typeof ways.resolveWaysMiddlewareEdit).toBe('function');
+    expect(typeof ways.applyWays).toBe('function');
 
     const attrs = await ways.htmlAttrs();
 
@@ -185,7 +185,6 @@ describe('next init', () => {
   it('resolves accepted locales inside init middleware handling', async () => {
     const { init } = await import('../next');
     const { fetchAcceptedLocales } = await import('@18ways/core/common');
-    const { NextResponse } = await import('next/server');
 
     const ways = init({
       apiKey: 'test-api-key',
@@ -202,7 +201,7 @@ describe('next init', () => {
       'x-forwarded-proto': 'https',
     });
 
-    const edit = await ways.resolveWaysMiddlewareEdit({
+    const response = await ways.applyWays({
       headers,
       cookies: {
         get: () => undefined,
@@ -214,8 +213,6 @@ describe('next init', () => {
       },
     } as any);
 
-    const response = edit(() => NextResponse.next());
-
     expect(fetchAcceptedLocales).toHaveBeenCalledWith(
       'en-GB',
       expect.objectContaining({
@@ -226,5 +223,51 @@ describe('next init', () => {
       })
     );
     expect(response.headers.get('location')).toBe('https://18ways.com/en-GB/docs');
+  });
+
+  it('applies middleware from init with per-request cookie persistence overrides', async () => {
+    const { init } = await import('../next');
+    const { fetchAcceptedLocales } = await import('@18ways/core/common');
+
+    const ways = init({
+      apiKey: 'test-api-key',
+      baseLocale: 'en-GB',
+      pathRouting: {
+        exclude: ['/dashboard'],
+      },
+      _apiUrl: 'https://example.com/api',
+    });
+
+    const response = await ways.applyWays(
+      {
+        headers: new Headers({
+          'accept-language': 'en-US,en;q=0.9',
+          host: '18ways.com',
+          'x-forwarded-proto': 'https',
+        }),
+        cookies: {
+          get: () => undefined,
+        },
+        nextUrl: {
+          pathname: '/docs',
+          origin: 'https://18ways.com',
+          clone: () => new URL('https://18ways.com/docs'),
+        },
+      } as any,
+      {
+        persistLocaleCookie: false,
+      }
+    );
+
+    expect(fetchAcceptedLocales).toHaveBeenCalledWith(
+      'en-GB',
+      expect.objectContaining({
+        origin: 'https://18ways.com',
+        apiKey: 'test-api-key',
+        apiUrl: 'https://example.com/api',
+      })
+    );
+    expect(response.headers.get('location')).toBe('https://18ways.com/en-GB/docs');
+    expect(response.cookies.getAll()).toEqual([]);
   });
 });
