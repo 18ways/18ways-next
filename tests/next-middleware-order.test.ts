@@ -174,18 +174,4 @@ describe('resolveWaysMiddleware locale engine', () => {
       true
     );
   });
-
-  it('skips locale cookie updates when persistence is disabled', async () => {
-    const resolution = await resolveWaysMiddleware(
-      createRequest({
-        pathname: '/fr-FR/docs',
-      }),
-      {
-        pathRouting: PATH_ROUTING,
-        persistLocaleCookie: false,
-      }
-    );
-
-    expect(resolution.cookieUpdates).toEqual([]);
-  });
 });

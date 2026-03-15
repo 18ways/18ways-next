@@ -28,6 +28,7 @@ vi.mock('@18ways/react', () => ({
 }));
 
 import { useLocale } from '../next-client';
+import { LocaleRuntimeConfigProvider } from '../next-locale-runtime';
 import { LocalePathSync } from '../next-locale-sync';
 
 const PATH_ROUTING: WaysPathRoutingConfig = {
@@ -140,18 +141,14 @@ describe('useLocale', () => {
     });
   });
 
-  it('skips locale cookie writes when persistence is disabled for the action', async () => {
+  it('inherits locale cookie persistence from the runtime config', async () => {
     pathname = '/dashboard/organizations';
 
-    const LocaleChangerWithoutPersistence = () => {
-      const { setLocale } = useLocale();
-
-      return (
-        <button onClick={() => setLocale('es-ES', { persistLocaleCookie: false })}>Switch</button>
-      );
-    };
-
-    render(<LocaleChangerWithoutPersistence />);
+    render(
+      <LocaleRuntimeConfigProvider persistLocaleCookie={false}>
+        <LocaleChangerWithDefaults />
+      </LocaleRuntimeConfigProvider>
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Switch' }));
 
     expect(document.cookie).not.toContain('18ways_locale=es-ES');
