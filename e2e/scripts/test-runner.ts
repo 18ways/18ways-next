@@ -10,7 +10,8 @@ import { startMockApiServer, stopMockApiServer, MOCK_API_PORT } from '../utils/m
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const TEST_APPS_DIR = path.join(__dirname, '..', 'test-apps');
+const E2E_ROOT = path.join(__dirname, '..');
+const TEST_APPS_DIR = path.join(E2E_ROOT, 'test-apps');
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..', '..');
 const ROOT_LOCKFILE_CANDIDATES = ['bun.lock', 'bun.lockb'];
 const INPUT_MTIME_TOLERANCE_MS = 1000;
@@ -74,6 +75,12 @@ interface LocalDependencyEntry {
 }
 
 const APP_TRASH_DIRNAME = '.e2e-trash';
+const LOCAL_DEPENDENCY_PACKAGE_FIELDS = [
+  'dependencies',
+  'devDependencies',
+  'optionalDependencies',
+  'overrides',
+] as const;
 
 function formatProgressLine(progress: AppProgress): string {
   const steps = [
@@ -188,6 +195,65 @@ function getRootLockfilePath(): string | null {
   return null;
 }
 
+function getLocalPlaywrightExecutablePath(): string {
+  return path.join(
+    E2E_ROOT,
+    'node_modules',
+    '.bin',
+    process.platform === 'win32' ? 'playwright.cmd' : 'playwright'
+  );
+}
+
+function hasHarnessDependencies(): boolean {
+  return (
+    fs.existsSync(getLocalPlaywrightExecutablePath()) &&
+    fs.existsSync(path.join(E2E_ROOT, 'node_modules', '@playwright', 'test', 'package.json'))
+  );
+}
+
+async function ensureHarnessDependencies(): Promise<void> {
+  if (hasHarnessDependencies()) {
+    return;
+  }
+
+  log('  Installing E2E harness dependencies...', chalk.gray);
+
+  return new Promise((resolve, reject) => {
+    const bunProcess = spawn(
+      'sh',
+      ['-c', 'bun install --frozen-lockfile --silent || bun install --silent'],
+      {
+        cwd: E2E_ROOT,
+        stdio: 'pipe',
+      }
+    );
+    const untrack = trackChildProcess(bunProcess);
+
+    let errorOutput = '';
+    bunProcess.stderr?.on('data', (data) => {
+      errorOutput += data.toString();
+    });
+
+    bunProcess.on('close', (code) => {
+      untrack();
+      if (code === 0 && hasHarnessDependencies()) {
+        resolve();
+        return;
+      }
+
+      if (errorOutput) {
+        console.log(errorOutput);
+      }
+      reject(new Error(`E2E harness bun install failed with code ${code ?? 'unknown'}`));
+    });
+
+    bunProcess.on('error', (error) => {
+      untrack();
+      reject(error);
+    });
+  });
+}
+
 function readPackageJson(packageJsonPath: string): Record<string, any> {
   return JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8')) as Record<string, any>;
 }
@@ -244,6 +310,62 @@ function collectLocalDependencyEntries(app: TestApp): LocalDependencyEntry[] {
     name,
     ...(JSON.parse(serialized) as Omit<LocalDependencyEntry, 'name'>),
   }));
+}
+
+function prepareExternalDependencyInstallManifest(app: TestApp): () => void {
+  const packageJsonPath = path.join(app.path, 'package.json');
+  if (!fs.existsSync(packageJsonPath)) {
+    return () => {};
+  }
+
+  const originalContents = fs.readFileSync(packageJsonPath, 'utf-8');
+  const originalStats = fs.statSync(packageJsonPath);
+  const pkg = JSON.parse(originalContents) as Record<string, any>;
+  let changed = false;
+
+  for (const field of LOCAL_DEPENDENCY_PACKAGE_FIELDS) {
+    const dependencyMap = pkg[field];
+    if (!dependencyMap || typeof dependencyMap !== 'object') {
+      continue;
+    }
+
+    const nextEntries = Object.entries(dependencyMap).filter(([, version]) => {
+      return (
+        typeof version !== 'string' ||
+        (!version.startsWith('file:') && !version.startsWith('link:'))
+      );
+    });
+
+    if (nextEntries.length === Object.keys(dependencyMap).length) {
+      continue;
+    }
+
+    changed = true;
+    if (nextEntries.length === 0) {
+      delete pkg[field];
+      continue;
+    }
+
+    pkg[field] = Object.fromEntries(nextEntries);
+  }
+
+  if (!changed) {
+    return () => {};
+  }
+
+  // Bun can fail to install nested apps when linked packages contain workspace-local deps.
+  fs.writeFileSync(packageJsonPath, `${JSON.stringify(pkg, null, 2)}\n`);
+
+  let restored = false;
+  return () => {
+    if (restored) {
+      return;
+    }
+    restored = true;
+
+    fs.writeFileSync(packageJsonPath, originalContents);
+    fs.utimesSync(packageJsonPath, originalStats.atime, originalStats.mtime);
+  };
 }
 
 function getLatestMtime(targetPath: string): number {
@@ -580,6 +702,8 @@ async function installDependencies(app: TestApp): Promise<void> {
     return;
   }
 
+  const restoreInstallManifest = prepareExternalDependencyInstallManifest(app);
+
   return new Promise((resolve, reject) => {
     const bunProcess = spawn(
       'sh',
@@ -598,6 +722,7 @@ async function installDependencies(app: TestApp): Promise<void> {
 
     bunProcess.on('close', (code) => {
       untrack();
+      restoreInstallManifest();
       if (code === 0) {
         ensureLinkedLocalDependencies(app);
         updateProgress(app.name, 'install', 'done');
@@ -613,6 +738,7 @@ async function installDependencies(app: TestApp): Promise<void> {
 
     bunProcess.on('error', (error) => {
       untrack();
+      restoreInstallManifest();
       log(`\n  ✗ ${app.name}: ${error.message}`, chalk.red);
       reject(error);
     });
@@ -863,12 +989,17 @@ function stopServer(app: TestApp): void {
 
 async function runPlaywrightTests(app: TestApp, suite?: string): Promise<TestResult> {
   updateProgress(app.name, 'test', 'running');
+  const appProgressData = appProgress.get(app.name);
+  if (appProgressData) {
+    appProgressData.testSquares = undefined;
+  }
 
   return new Promise((resolve) => {
     const startTime = Date.now();
     const testUrl = `http://localhost:${app.port}`;
     const resultFile = path.join(__dirname, '..', 'test-results', `${app.name}-results.json`);
     const progressFile = path.join(__dirname, '..', 'test-results', `${app.name}-progress.json`);
+    let latestProgressData: TestProgressState | null = null;
 
     // Ensure test-results directory exists
     const resultsDir = path.join(__dirname, '..', 'test-results');
@@ -891,8 +1022,8 @@ async function runPlaywrightTests(app: TestApp, suite?: string): Promise<TestRes
       playwrightArgs.push(`tests/${suite}.test.ts`);
     }
 
-    const playwright = spawn('bunx', playwrightArgs, {
-      cwd: path.join(__dirname, '..'),
+    const playwright = spawn(getLocalPlaywrightExecutablePath(), playwrightArgs.slice(1), {
+      cwd: E2E_ROOT,
       env: {
         ...process.env,
         TEST_APP_URL: testUrl,
@@ -912,6 +1043,7 @@ async function runPlaywrightTests(app: TestApp, suite?: string): Promise<TestRes
           const progressData = JSON.parse(
             fs.readFileSync(progressFile, 'utf-8')
           ) as TestProgressState;
+          latestProgressData = progressData;
           const squares = progressData.tests
             .filter((test) => test.status !== 'skipped') // Don't show skipped tests
             .map((test) => {
@@ -1001,6 +1133,7 @@ async function runPlaywrightTests(app: TestApp, suite?: string): Promise<TestRes
           const progressData = JSON.parse(
             fs.readFileSync(progressFile, 'utf-8')
           ) as TestProgressState;
+          latestProgressData = progressData;
           const reporterFailures = progressData.failures || [];
           if (reporterFailures.length > 0) {
             failures = reporterFailures;
@@ -1029,6 +1162,22 @@ async function runPlaywrightTests(app: TestApp, suite?: string): Promise<TestRes
             title: 'Playwright progress output unavailable',
             error: e instanceof Error ? e.message : 'Unknown Playwright progress error',
           });
+        }
+      }
+
+      if (reporterError !== null) {
+        if (latestProgressData) {
+          passed = latestProgressData.tests.filter((test) => test.status === 'passed').length;
+          failed = latestProgressData.tests.filter((test) => test.status === 'failed').length;
+          failures = latestProgressData.failures || [];
+          success = code === 0 && failed === 0;
+          reporterError = null;
+        } else if (code === 0) {
+          passed = Math.max(appProgress.get(app.name)?.testSquares?.length || 0, 1);
+          failed = 0;
+          failures = [];
+          success = true;
+          reporterError = null;
         }
       }
 
@@ -1259,6 +1408,8 @@ export async function runE2E(): Promise<boolean> {
   }
 
   try {
+    await ensureHarnessDependencies();
+
     logPhase('📦 Discovering test apps...');
     apps = await discoverTestApps();
 

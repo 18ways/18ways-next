@@ -11,6 +11,9 @@
     "next": "15.5.9",
     "react": "18.3.1",
     "react-dom": "18.3.1",
+    "crypto-js": "^4.2.0",
+    "fast-xml-parser": "^4.4.1",
+    "set-value": "^4.1.0",
     "@18ways/core": "link:../../../../18ways-core",
     "@18ways/react": "link:../../../../18ways-react",
     "@18ways/next": "link:../../.."
@@ -19,6 +22,11 @@
     "@18ways/core": "link:../../../../18ways-core",
     "@18ways/react": "link:../../../../18ways-react",
     "@18ways/next": "link:../../.."
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.12",
+    "typescript": "^5.6.2"
   },
   "packageManager": "bun@1.3.8"
 }
