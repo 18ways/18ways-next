@@ -57,22 +57,4 @@ export default function Page() {
 }
 ```
 
-## Middleware
-
-```ts
-// lib/ways.ts
-import { init as initWays } from '@18ways/next/server';
-
-export const { WaysRoot, applyWays } = initWays({
-  apiKey: 'pk_live_GET_ME_FROM_YOUR_DASHBOARD_...',
-  baseLocale: 'en-GB',
-});
-
-// middleware.ts
-export { applyWays as default } from '@/lib/ways';
-export { config } from '@18ways/next/server';
-```
-
-If you need to mutate the final middleware response, pass `transformResponse` to `applyWays()`. If you also need to change the downstream request before that response is created, use `transformRequestHeaders`.
-
 Docs: [18ways.com/docs](https://18ways.com/docs)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyWays } from '../next';
+import { waysMiddleware } from '../next';
 import { WAYS_LOCALE_COOKIE_NAME } from '@18ways/core/i18n-shared';
 
 type RequestInput = {
@@ -30,9 +30,9 @@ const createRequest = ({ pathname, acceptLanguage }: RequestInput) => {
   } as any;
 };
 
-describe('applyWays', () => {
+describe('waysMiddleware', () => {
   it('handles the default next/rewrite response flow', async () => {
-    const response = await applyWays(
+    const response = await waysMiddleware(
       createRequest({
         pathname: '/fr-FR/docs',
         acceptLanguage: 'fr-FR,fr;q=0.9',
@@ -47,7 +47,7 @@ describe('applyWays', () => {
   });
 
   it('supports request-header and response transforms', async () => {
-    const response = await applyWays(
+    const response = await waysMiddleware(
       createRequest({
         pathname: '/fr-FR/docs',
         acceptLanguage: 'fr-FR,fr;q=0.9',

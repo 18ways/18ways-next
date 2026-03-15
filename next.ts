@@ -92,7 +92,7 @@ export type WaysNextInitResult = {
     metadata?: WaysMetadataInput,
     options?: { origin?: string }
   ) => Promise<Record<string, any>>;
-  applyWays: (request: NextRequest, options?: WaysInitApplyOptions) => Promise<NextResponse>;
+  waysMiddleware: (request: NextRequest, options?: WaysInitApplyOptions) => Promise<NextResponse>;
 };
 
 const METADATA_TRANSLATION_CONTEXT_KEY = '__18ways_metadata__';
@@ -405,7 +405,7 @@ export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
     return deepMerged(translatedMetadata, waysMetadata);
   };
 
-  const applyWaysFromInit = async (
+  const waysMiddlewareFromInit = async (
     request: NextRequest,
     applyOptions: WaysInitApplyOptions = {}
   ) => {
@@ -434,14 +434,14 @@ export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
       syncMode: applyOptions.syncMode,
       persistLocaleCookie: applyOptions.persistLocaleCookie,
     });
-    return applyWaysResolution(request, resolution, applyOptions);
+    return finalizeWaysMiddlewareResponse(request, resolution, applyOptions);
   };
 
   return {
     WaysRoot,
     htmlAttrs,
     generateWaysMetadata,
-    applyWays: applyWaysFromInit,
+    waysMiddleware: waysMiddlewareFromInit,
   };
 };
 
@@ -754,7 +754,7 @@ const createWaysBaseResponse = (request: NextRequest, context: WaysApplyContext)
   });
 };
 
-const applyWaysResolution = async (
+const finalizeWaysMiddlewareResponse = async (
   request: NextRequest,
   resolution: WaysMiddlewareResolution,
   transforms: WaysApplyTransforms = {}
@@ -772,20 +772,20 @@ const applyWaysResolution = async (
   return transformedResponse || response;
 };
 
-export const applyWays = async (
+export const waysMiddleware = async (
   request: NextRequest,
   options: WaysApplyOptions = {}
 ): Promise<NextResponse> => {
   const { transformRequestHeaders, transformResponse, ...middlewareOptions } = options;
   const resolution = await resolveWaysMiddleware(request, middlewareOptions);
-  return applyWaysResolution(request, resolution, {
+  return finalizeWaysMiddlewareResponse(request, resolution, {
     transformRequestHeaders,
     transformResponse,
   });
 };
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
-  return applyWays(request);
+  return waysMiddleware(request);
 }
 
 export const config = {

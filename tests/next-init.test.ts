@@ -47,7 +47,7 @@ describe('next init', () => {
       baseLocale: 'en-GB',
       _apiUrl: 'https://example.com/api',
     });
-    expect(typeof ways.applyWays).toBe('function');
+    expect(typeof ways.waysMiddleware).toBe('function');
 
     const attrs = await ways.htmlAttrs();
 
@@ -201,7 +201,7 @@ describe('next init', () => {
       'x-forwarded-proto': 'https',
     });
 
-    const response = await ways.applyWays({
+    const response = await ways.waysMiddleware({
       headers,
       cookies: {
         get: () => undefined,
@@ -238,7 +238,7 @@ describe('next init', () => {
       _apiUrl: 'https://example.com/api',
     });
 
-    const response = await ways.applyWays(
+    const response = await ways.waysMiddleware(
       {
         headers: new Headers({
           'accept-language': 'en-US,en;q=0.9',
