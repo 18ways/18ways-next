@@ -26,6 +26,7 @@ vi.mock('@18ways/react', () => ({
 }));
 
 import { LocalePathSync } from '../next-locale-sync';
+import { LocaleRuntimeConfigProvider } from '../next-locale-runtime';
 
 const PATH_ROUTING: WaysPathRoutingConfig = {
   exclude: ['/dashboard'],
@@ -77,6 +78,23 @@ describe('LocalePathSync', () => {
       expect(router.replace).toHaveBeenCalledWith('/es-ES/docs', { scroll: false });
       expect(document.cookie).toContain('18ways_locale=es-ES');
       expect(setCurrentLocale).toHaveBeenCalledWith('es-ES');
+    });
+  });
+
+  it('does not rewrite the locale cookie when runtime cookie persistence is disabled', async () => {
+    pathname = '/fr-FR/docs';
+    window.history.replaceState({}, '', '/fr-FR/docs');
+
+    render(
+      <LocaleRuntimeConfigProvider persistLocaleCookie={false}>
+        <LocalePathSync pathRouting={PATH_ROUTING} />
+      </LocaleRuntimeConfigProvider>
+    );
+
+    await waitFor(() => {
+      expect(setCurrentLocale).toHaveBeenCalledWith('fr-FR');
+      expect(document.cookie).not.toContain('18ways_locale=fr-FR');
+      expect(router.replace).not.toHaveBeenCalled();
     });
   });
 });

@@ -153,4 +153,22 @@ describe('useLocale', () => {
 
     expect(document.cookie).not.toContain('18ways_locale=es-ES');
   });
+
+  it('does not rewrite the locale cookie when LocalePathSync is mounted and runtime persistence is disabled', async () => {
+    pathname = '/en-GB/docs';
+    window.history.replaceState({}, '', '/en-GB/docs?foo=1');
+
+    render(
+      <LocaleRuntimeConfigProvider persistLocaleCookie={false}>
+        <LocaleChangerWithPathSync />
+      </LocaleRuntimeConfigProvider>
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Switch' }));
+
+    await waitFor(() => {
+      expect(router.replace).toHaveBeenCalledWith('/es-ES/docs?foo=1', { scroll: false });
+      expect(setCurrentLocale).toHaveBeenCalledWith('es-ES');
+      expect(document.cookie).not.toContain('18ways_locale=es-ES');
+    });
+  });
 });
