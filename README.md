@@ -33,9 +33,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     </html>
   );
 }
+```
 
+```tsx
 // app/page.tsx
-('use client');
+'use client';
 
 import { LanguageSwitcher, Ways, T } from '@18ways/react';
 import { useLocale } from '@18ways/next/client';
