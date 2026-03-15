@@ -1,6 +1,7 @@
 import React from 'react';
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { NextRequest } from 'next/server';
 import { Ways as ClientWays } from '@18ways/react';
 import type { WaysProps, WaysRootProps } from '@18ways/react';
 import {
@@ -19,10 +20,16 @@ import {
   fetchAcceptedLocales,
   resolveOrigin,
 } from '@18ways/core/common';
+import { readPreferredLocalesFromAcceptLanguageHeader } from '@18ways/core/locale-drivers';
 import { createNextLocaleEngine, type NextLocaleDriverContext } from './next-locale-drivers';
-import { WAYS_LOCALIZED_PATHNAME_HEADER_NAME, WAYS_PATHNAME_HEADER_NAME } from './next-shared';
+import {
+  WAYS_LOCALIZED_PATHNAME_HEADER_NAME,
+  WAYS_PATHNAME_HEADER_NAME,
+  WAYS_PERSIST_LOCALE_COOKIE_HEADER_NAME,
+} from './next-shared';
 import { NextReactWays } from './next-react-client';
 import { createNextRequestInitDecorator } from './next-request-init';
+import type { WaysPersistLocaleCookiePolicy } from './next';
 
 type LocaleResolutionProps = Partial<
   Pick<WaysRootProps, 'locale' | 'baseLocale' | '_apiUrl' | '_requestInitDecorator'>
@@ -36,12 +43,13 @@ const resolveLocaleFromRequest = async (
 ): Promise<{ locale: string; supportedLocales: string[]; requestOrigin: string }> => {
   const cookieStore = await cookies();
   const headerStore = await headers();
+  const acceptLanguageHeader = headerStore.get('accept-language');
 
   const fallbackLocale =
     props?.locale ||
     props?.baseLocale ||
     cookieStore.get(WAYS_LOCALE_COOKIE_NAME)?.value ||
-    headerStore.get('accept-language')?.split(',')[0] ||
+    readPreferredLocalesFromAcceptLanguageHeader(acceptLanguageHeader)[0] ||
     'en-GB';
 
   const requestOrigin = resolveOrigin({
@@ -65,7 +73,7 @@ const resolveLocaleFromRequest = async (
     acceptedLocales: supportedLocales,
     pathRouting: props?.pathRouting,
     readCookie: (cookieName) => cookieStore.get(cookieName)?.value,
-    acceptLanguageHeader: headerStore.get('accept-language'),
+    acceptLanguageHeader,
   };
   const localeEngine = createNextLocaleEngine<NextLocaleDriverContext>({
     baseLocale: fallbackLocale,
@@ -182,6 +190,40 @@ export const generateWaysMetadata = async (
 
 type WaysRscProps = WaysProps & {
   pathRouting?: WaysPathRoutingConfig;
+  _persistLocaleCookiePolicy?: WaysPersistLocaleCookiePolicy;
+};
+
+const parsePersistLocaleCookieHeader = (rawValue: string | null): boolean | undefined => {
+  if (rawValue === 'true') {
+    return true;
+  }
+
+  if (rawValue === 'false') {
+    return false;
+  }
+
+  return undefined;
+};
+
+const createRequestFromHeaders = async (url: string): Promise<NextRequest> => {
+  const headerStore = await headers();
+  const cookieStore = await cookies();
+  const requestHeaders = new Headers(headerStore);
+
+  if (!requestHeaders.has('cookie')) {
+    const cookieHeader = cookieStore
+      .getAll()
+      .map((cookie) => `${cookie.name}=${cookie.value}`)
+      .join('; ');
+
+    if (cookieHeader) {
+      requestHeaders.set('cookie', cookieHeader);
+    }
+  }
+
+  return new NextRequest(url, {
+    headers: requestHeaders,
+  });
 };
 
 export async function Ways(props: WaysRscProps): Promise<React.JSX.Element> {
@@ -190,8 +232,9 @@ export async function Ways(props: WaysRscProps): Promise<React.JSX.Element> {
   }
 
   const resolved = await resolveLocaleFromRequest(props);
+  const headerStore = await headers();
   const locale = props.locale || resolved.locale;
-  const { localizedPathname } = await resolveRequestPaths(locale, props.pathRouting);
+  const { pathname, localizedPathname } = await resolveRequestPaths(locale, props.pathRouting);
   const knownLocales =
     Array.isArray(props.acceptedLocales) && props.acceptedLocales.length
       ? props.acceptedLocales
@@ -207,12 +250,24 @@ export async function Ways(props: WaysRscProps): Promise<React.JSX.Element> {
     redirect(buildLocalizedPathname(localePath.unlocalizedPathname, locale));
   }
 
+  const requestUrl = joinOriginAndPathname(
+    resolved.requestOrigin,
+    props.pathRouting ? localizedPathname : pathname
+  );
+  const requestPersistLocaleCookie =
+    parsePersistLocaleCookieHeader(headerStore.get(WAYS_PERSIST_LOCALE_COOKIE_HEADER_NAME)) ??
+    (typeof props._persistLocaleCookiePolicy === 'function'
+      ? props._persistLocaleCookiePolicy(await createRequestFromHeaders(requestUrl))
+      : props.persistLocaleCookie);
+
   const {
     pathRouting: strippedPathRouting,
+    _persistLocaleCookiePolicy: strippedPersistLocaleCookiePolicy,
     _requestInitDecorator: strippedRequestInitDecorator,
     ...clientWaysProps
   } = props;
   void strippedPathRouting;
+  void strippedPersistLocaleCookiePolicy;
   void strippedRequestInitDecorator;
 
   return (
@@ -221,6 +276,8 @@ export async function Ways(props: WaysRscProps): Promise<React.JSX.Element> {
       locale={locale}
       requestOrigin={resolved.requestOrigin}
       acceptedLocales={resolved.supportedLocales}
+      pathRouting={props.pathRouting}
+      persistLocaleCookie={requestPersistLocaleCookie}
     />
   );
 }

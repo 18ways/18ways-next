@@ -15,7 +15,10 @@ import {
   stripLocalePrefix,
 } from '@18ways/core/i18n-shared';
 import { createNextLocaleEngine, type NextLocaleDriverContext } from './next-locale-drivers';
-import { useLocaleRuntimePathRouting } from './next-locale-runtime';
+import {
+  useLocaleRuntimePathRouting,
+  useLocaleRuntimePersistLocaleCookie,
+} from './next-locale-runtime';
 import { navigateClientLocaleHref } from './client-navigation';
 
 export { localizePathname, stripLocalePrefix };
@@ -75,12 +78,10 @@ export const useLocalizedHref = (options?: {
 export type SetLocaleOptions = {
   preserveSearch?: boolean;
   preserveHash?: boolean;
-  persistLocaleCookie?: boolean;
 };
 
 export type UseLocaleOptions = {
   pathRouting?: WaysPathRoutingConfig;
-  persistLocaleCookie?: boolean;
 };
 
 type ClientLocaleEngineContext = NextLocaleDriverContext;
@@ -138,6 +139,7 @@ export const useLocale = (
   const router = useRouter();
   const locale = contextLocale;
   const runtimePathRouting = useLocaleRuntimePathRouting();
+  const runtimePersistLocaleCookie = useLocaleRuntimePersistLocaleCookie();
   const effectivePathRouting = resolvePathRouting(options?.pathRouting, runtimePathRouting);
 
   const setLocale = useCallback(
@@ -157,10 +159,7 @@ export const useLocale = (
           : typeof window !== 'undefined'
             ? window.location.hash
             : '';
-      const persistLocaleCookie =
-        typeof setLocaleOptions?.persistLocaleCookie === 'boolean'
-          ? setLocaleOptions.persistLocaleCookie
-          : options?.persistLocaleCookie;
+      const persistLocaleCookie = runtimePersistLocaleCookie;
       if (effectivePathRouting) {
         markClientLocaleSyncHandled(recognizedNextLocale);
       }
@@ -190,7 +189,15 @@ export const useLocale = (
         router.refresh();
       });
     },
-    [effectivePathRouting, locale, pathname, router, searchParams, setCurrentLocale]
+    [
+      effectivePathRouting,
+      locale,
+      pathname,
+      router,
+      runtimePersistLocaleCookie,
+      searchParams,
+      setCurrentLocale,
+    ]
   );
 
   return {

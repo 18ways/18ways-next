@@ -6,8 +6,6 @@ import {
   getWaysHtmlAttrs as getWaysHtmlAttrsBase,
 } from './rsc';
 import type { WaysProps, WaysRootProps } from '@18ways/react';
-import { LocalePathSync } from './next-locale-sync';
-import { LocaleRuntimeConfigProvider } from './next-locale-runtime';
 import {
   SUPPORTED_LOCALES,
   WAYS_LOCALE_COOKIE_NAME,
@@ -32,6 +30,7 @@ import { createNextRequestInitDecorator } from './next-request-init';
 import {
   WAYS_LOCALE_HEADER_NAME,
   WAYS_LOCALIZED_PATHNAME_HEADER_NAME,
+  WAYS_PERSIST_LOCALE_COOKIE_HEADER_NAME,
   WAYS_PATHNAME_HEADER_NAME,
 } from './next-shared';
 
@@ -42,8 +41,14 @@ export {
 };
 export type { WaysProps, WaysRootProps };
 
-export type WaysNextInitOptions = Omit<WaysRootProps, 'children' | 'context'> & {
+export type WaysPersistLocaleCookiePolicy = boolean | ((request: NextRequest) => boolean);
+
+export type WaysNextInitOptions = Omit<
+  WaysRootProps,
+  'children' | 'context' | 'persistLocaleCookie'
+> & {
   pathRouting?: WaysPathRoutingConfig;
+  persistLocaleCookie?: WaysPersistLocaleCookiePolicy;
 };
 
 export type WaysRootComponentProps = {
@@ -55,6 +60,34 @@ export type WaysMetadataFactory = (
   t: WaysMetadataTranslator
 ) => Record<string, any> | Promise<Record<string, any>>;
 export type WaysMetadataInput = Record<string, any> | WaysMetadataFactory;
+export type WaysApplyContext = {
+  request: NextRequest;
+  action: WaysMiddlewareResolution['action'];
+  locale: string;
+  unlocalizedPathname: string;
+  localizedPathname: string;
+  requestHeaders: Headers;
+  rewritePathname?: string;
+  redirectPathname?: string;
+};
+
+export type WaysRequestHeadersTransform = (
+  context: WaysApplyContext
+) => Headers | void | Promise<Headers | void>;
+
+export type WaysResponseTransform = (
+  response: NextResponse,
+  context: WaysApplyContext
+) => NextResponse | void | Promise<NextResponse | void>;
+
+type WaysApplyTransforms = {
+  transformRequestHeaders?: WaysRequestHeadersTransform;
+  transformResponse?: WaysResponseTransform;
+};
+
+export type WaysInitApplyOptions = WaysApplyTransforms & {
+  syncMode?: LocaleSyncMode;
+};
 
 export type WaysNextInitResult = {
   WaysRoot: (props: WaysRootComponentProps) => Promise<React.JSX.Element>;
@@ -63,10 +96,18 @@ export type WaysNextInitResult = {
     metadata?: WaysMetadataInput,
     options?: { origin?: string }
   ) => Promise<Record<string, any>>;
-  resolveWaysMiddlewareEdit: (
-    request: NextRequest,
-    options?: { syncMode?: LocaleSyncMode; persistLocaleCookie?: boolean }
-  ) => Promise<(createResponse: WaysMiddlewareResponseFactory) => NextResponse>;
+  waysMiddleware: (request: NextRequest, options?: WaysInitApplyOptions) => Promise<NextResponse>;
+};
+
+const resolvePersistLocaleCookiePolicy = (
+  policy: WaysPersistLocaleCookiePolicy | undefined,
+  request: NextRequest
+): boolean | undefined => {
+  if (typeof policy === 'function') {
+    return policy(request);
+  }
+
+  return policy;
 };
 
 const METADATA_TRANSLATION_CONTEXT_KEY = '__18ways_metadata__';
@@ -300,12 +341,12 @@ const resolveMetadataInput = async (params: {
 export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
   const { pathRouting, ...waysRootOptions } = options;
   const defaultAcceptedLocales = waysRootOptions.acceptedLocales;
-  const defaultMiddlewareOptions = createWaysMiddlewareOptions({
+  const defaultMiddlewareOptions: InternalWaysMiddlewareOptions = {
     baseLocale: waysRootOptions.baseLocale,
     pathRouting,
     acceptedLocales: defaultAcceptedLocales,
     supportedLocales: defaultAcceptedLocales,
-  });
+  };
   const rootProps = { ...waysRootOptions };
   const localeProps: Partial<
     Pick<WaysRootProps, 'locale' | 'baseLocale' | 'apiKey' | '_apiUrl'>
@@ -321,7 +362,18 @@ export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
     pathRouting,
   };
   const WaysRoot = async ({ children }: WaysRootComponentProps): Promise<React.JSX.Element> => {
-    return Ways({ ...rootProps, pathRouting, children });
+    const rootPersistLocaleCookie =
+      typeof waysRootOptions.persistLocaleCookie === 'boolean'
+        ? waysRootOptions.persistLocaleCookie
+        : undefined;
+
+    return Ways({
+      ...rootProps,
+      pathRouting,
+      children,
+      persistLocaleCookie: rootPersistLocaleCookie,
+      _persistLocaleCookiePolicy: waysRootOptions.persistLocaleCookie,
+    });
   };
 
   const htmlAttrs = async (): Promise<Record<string, string>> => {
@@ -379,9 +431,9 @@ export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
     return deepMerged(translatedMetadata, waysMetadata);
   };
 
-  const resolveWaysMiddlewareEditFromInit = async (
+  const waysMiddlewareFromInit = async (
     request: NextRequest,
-    middlewareOptions?: { syncMode?: LocaleSyncMode }
+    applyOptions: WaysInitApplyOptions = {}
   ) => {
     const resolvedBaseLocale = recognizeLocale(waysRootOptions.baseLocale) || 'en-GB';
     const acceptedLocales =
@@ -401,46 +453,35 @@ export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
           })
         : [...SUPPORTED_LOCALES]);
 
-    return resolveWaysMiddlewareEdit(request, {
+    const resolution = await resolveWaysMiddlewareInternal(request, {
       ...defaultMiddlewareOptions,
       acceptedLocales,
       supportedLocales: acceptedLocales,
-      syncMode: middlewareOptions?.syncMode,
+      syncMode: applyOptions.syncMode,
+      persistLocaleCookie: resolvePersistLocaleCookiePolicy(
+        waysRootOptions.persistLocaleCookie,
+        request
+      ),
     });
+    return finalizeWaysMiddlewareResponse(request, resolution, applyOptions);
   };
 
   return {
     WaysRoot,
     htmlAttrs,
     generateWaysMetadata,
-    resolveWaysMiddlewareEdit: resolveWaysMiddlewareEditFromInit,
+    waysMiddleware: waysMiddlewareFromInit,
   };
 };
 
 type WaysNextProps = WaysProps & {
   pathRouting?: WaysPathRoutingConfig;
+  _persistLocaleCookiePolicy?: WaysPersistLocaleCookiePolicy;
 };
-const LocalePathSyncComponent = LocalePathSync as React.ComponentType<{
-  pathRouting?: WaysPathRoutingConfig;
-}>;
 
 export function Ways(props: WaysNextProps): React.JSX.Element {
   if ('apiKey' in props) {
-    const { pathRouting, ...serverWaysProps } = props;
-    const children = pathRouting
-      ? React.createElement(
-          LocaleRuntimeConfigProvider,
-          { pathRouting },
-          React.createElement(
-            React.Fragment,
-            null,
-            React.createElement(LocalePathSyncComponent, { pathRouting }),
-            props.children
-          )
-        )
-      : props.children;
-
-    return React.createElement(ServerWays, serverWaysProps, children);
+    return React.createElement(ServerWays, props, props.children);
   }
 
   return React.createElement(ServerWays, props, props.children);
@@ -463,6 +504,10 @@ export type WaysMiddlewareOptions = {
   syncMode?: LocaleSyncMode;
   acceptedLocales?: string[];
   supportedLocales?: string[];
+};
+
+export type WaysApplyOptions = WaysMiddlewareOptions & WaysApplyTransforms;
+type InternalWaysMiddlewareOptions = WaysMiddlewareOptions & {
   persistLocaleCookie?: boolean;
 };
 
@@ -511,7 +556,6 @@ export const createWaysMiddlewareOptions = (input: {
   syncMode?: LocaleSyncMode;
   acceptedLocales?: string[];
   supportedLocales?: string[];
-  persistLocaleCookie?: boolean;
 }): WaysMiddlewareOptions => {
   return {
     baseLocale: input.baseLocale,
@@ -519,7 +563,6 @@ export const createWaysMiddlewareOptions = (input: {
     syncMode: input.syncMode,
     acceptedLocales: input.acceptedLocales,
     supportedLocales: input.supportedLocales,
-    persistLocaleCookie: input.persistLocaleCookie,
   };
 };
 
@@ -602,30 +645,36 @@ const buildRequestHeaders = (
   request: NextRequest,
   locale: string,
   unlocalizedPathname: string,
-  localizedPathname: string
+  localizedPathname: string,
+  persistLocaleCookie: boolean
 ): Headers => {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set(WAYS_LOCALE_HEADER_NAME, locale);
   requestHeaders.set(WAYS_PATHNAME_HEADER_NAME, normalizePathname(unlocalizedPathname));
   requestHeaders.set(WAYS_LOCALIZED_PATHNAME_HEADER_NAME, normalizePathname(localizedPathname));
+  requestHeaders.set(
+    WAYS_PERSIST_LOCALE_COOKIE_HEADER_NAME,
+    persistLocaleCookie ? 'true' : 'false'
+  );
   return requestHeaders;
 };
 
-export const resolveWaysMiddleware = async (
+const resolveWaysMiddlewareInternal = async (
   request: NextRequest,
-  options?: WaysMiddlewareOptions
+  options?: InternalWaysMiddlewareOptions
 ): Promise<WaysMiddlewareResolution> => {
   const baseLocale = recognizeLocale(options?.baseLocale) || 'en-GB';
   const pathRouting = options?.pathRouting;
   const supportedLocales = options?.supportedLocales;
   const acceptedLocales = options?.acceptedLocales;
+  const persistLocaleCookie = options?.persistLocaleCookie !== false;
   const { context, state } = createWaysMiddlewareContext({
     request,
     baseLocale,
     pathRouting,
     supportedLocales,
     acceptedLocales,
-    persistLocaleCookie: options?.persistLocaleCookie,
+    persistLocaleCookie,
   });
   const engine = createNextLocaleEngine<WaysMiddlewareContext>({
     baseLocale,
@@ -640,7 +689,8 @@ export const resolveWaysMiddleware = async (
     request,
     resolution.locale,
     state.unlocalizedPathname,
-    state.localizedPathname
+    state.localizedPathname,
+    persistLocaleCookie
   );
   const cookieUpdates = Array.from(state.cookieUpdates.values());
 
@@ -678,10 +728,11 @@ export const resolveWaysMiddleware = async (
   };
 };
 
-const copyResponseCookies = (source: NextResponse, target: NextResponse) => {
-  for (const cookie of source.cookies.getAll()) {
-    target.cookies.set(cookie);
-  }
+export const resolveWaysMiddleware = async (
+  request: NextRequest,
+  options?: WaysMiddlewareOptions
+): Promise<WaysMiddlewareResolution> => {
+  return resolveWaysMiddlewareInternal(request, options);
 };
 
 const applyLocaleCookies = (response: NextResponse, cookieUpdates: WaysCookieUpdate[]) => {
@@ -690,73 +741,78 @@ const applyLocaleCookies = (response: NextResponse, cookieUpdates: WaysCookieUpd
   });
 };
 
-export type WaysMiddlewareResponseFactory = (options?: {
-  requestHeaders?: Headers;
-  rewritePathname?: string;
-}) => NextResponse;
-
-export const createWaysResponseEdit = (
+const createWaysApplyContext = (
   request: NextRequest,
   resolution: WaysMiddlewareResolution
-) => {
-  return (createResponse: WaysMiddlewareResponseFactory): NextResponse => {
-    if (resolution.action === 'redirect') {
-      const seedResponse = createResponse({
-        requestHeaders: resolution.requestHeaders,
-      });
-      const redirectUrl = request.nextUrl.clone();
-      redirectUrl.pathname = resolution.redirectPathname;
-      const response = NextResponse.redirect(redirectUrl);
-      copyResponseCookies(seedResponse, response);
-      applyLocaleCookies(response, resolution.cookieUpdates);
-      return response;
-    }
-
-    if (resolution.action === 'rewrite') {
-      const response = createResponse({
-        requestHeaders: resolution.requestHeaders,
-        rewritePathname: resolution.rewritePathname,
-      });
-      applyLocaleCookies(response, resolution.cookieUpdates);
-      return response;
-    }
-
-    const response = createResponse({
-      requestHeaders: resolution.requestHeaders,
-    });
-    applyLocaleCookies(response, resolution.cookieUpdates);
-    return response;
+): WaysApplyContext => {
+  return {
+    request,
+    action: resolution.action,
+    locale: resolution.locale,
+    unlocalizedPathname: resolution.unlocalizedPathname,
+    localizedPathname: resolution.localizedPathname,
+    requestHeaders: new Headers(resolution.requestHeaders),
+    rewritePathname: resolution.action === 'rewrite' ? resolution.rewritePathname : undefined,
+    redirectPathname: resolution.action === 'redirect' ? resolution.redirectPathname : undefined,
   };
 };
 
-export const resolveWaysMiddlewareEdit = async (
+const createWaysBaseResponse = (request: NextRequest, context: WaysApplyContext): NextResponse => {
+  if (context.action === 'redirect' && context.redirectPathname) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = context.redirectPathname;
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  if (context.action === 'rewrite' && context.rewritePathname) {
+    const rewriteUrl = request.nextUrl.clone();
+    rewriteUrl.pathname = context.rewritePathname;
+    return NextResponse.rewrite(rewriteUrl, {
+      request: {
+        headers: context.requestHeaders,
+      },
+    });
+  }
+
+  return NextResponse.next({
+    request: {
+      headers: context.requestHeaders,
+    },
+  });
+};
+
+const finalizeWaysMiddlewareResponse = async (
   request: NextRequest,
-  options?: WaysMiddlewareOptions
-) => {
-  const resolution = await resolveWaysMiddleware(request, options);
-  return createWaysResponseEdit(request, resolution);
+  resolution: WaysMiddlewareResolution,
+  transforms: WaysApplyTransforms = {}
+): Promise<NextResponse> => {
+  const context = createWaysApplyContext(request, resolution);
+  const transformedRequestHeaders = await transforms.transformRequestHeaders?.(context);
+  if (transformedRequestHeaders) {
+    context.requestHeaders = transformedRequestHeaders;
+  }
+
+  const response = createWaysBaseResponse(request, context);
+  applyLocaleCookies(response, resolution.cookieUpdates);
+
+  const transformedResponse = await transforms.transformResponse?.(response, context);
+  return transformedResponse || response;
+};
+
+export const waysMiddleware = async (
+  request: NextRequest,
+  options: WaysApplyOptions = {}
+): Promise<NextResponse> => {
+  const { transformRequestHeaders, transformResponse, ...middlewareOptions } = options;
+  const resolution = await resolveWaysMiddlewareInternal(request, middlewareOptions);
+  return finalizeWaysMiddlewareResponse(request, resolution, {
+    transformRequestHeaders,
+    transformResponse,
+  });
 };
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
-  const resolution = await resolveWaysMiddleware(request);
-  const applyWays = createWaysResponseEdit(request, resolution);
-  return applyWays(({ requestHeaders, rewritePathname } = {}) => {
-    if (rewritePathname) {
-      const rewriteUrl = request.nextUrl.clone();
-      rewriteUrl.pathname = rewritePathname;
-      return NextResponse.rewrite(rewriteUrl, {
-        request: {
-          headers: requestHeaders || request.headers,
-        },
-      });
-    }
-
-    return NextResponse.next({
-      request: {
-        headers: requestHeaders || request.headers,
-      },
-    });
-  });
+  return waysMiddleware(request);
 }
 
 export const config = {

@@ -63,4 +63,30 @@ describe('rsc ways accepted locales handoff', () => {
       expect(fetchAcceptedLocales).toHaveBeenCalledTimes(1);
     });
   });
+
+  it('uses the highest-q browser locale when seeding accepted locale resolution', async () => {
+    mockState.headerStore = new Headers({
+      'accept-language': 'fr-FR;q=0.2, es-ES;q=0.9',
+      host: '18ways.com',
+      'x-forwarded-proto': 'https',
+      [WAYS_PATHNAME_HEADER_NAME]: '/docs',
+      [WAYS_LOCALIZED_PATHNAME_HEADER_NAME]: '/es-ES/docs',
+    });
+
+    const { fetchAcceptedLocales } = await import('@18ways/core/common');
+    const { Ways } = await import('../rsc');
+
+    await Ways({
+      apiKey: 'test-api-key',
+      children: <div>Test App</div>,
+    });
+
+    expect(fetchAcceptedLocales).toHaveBeenCalledWith(
+      'es-ES',
+      expect.objectContaining({
+        apiKey: 'test-api-key',
+        origin: 'https://18ways.com',
+      })
+    );
+  });
 });

@@ -15,6 +15,7 @@ const nextConfig = {
   productionBrowserSourceMaps: false, // Skip source maps for faster builds
   webpack: (config) => {
     const path = require('path');
+    config.resolve.symlinks = false;
     config.resolve.extensionAlias = {
       '.js': ['.js', '.ts', '.tsx'],
       '.jsx': ['.jsx', '.tsx'],

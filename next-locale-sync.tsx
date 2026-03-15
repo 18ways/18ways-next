@@ -11,7 +11,10 @@ import {
   recognizeLocale,
 } from '@18ways/core/i18n-shared';
 import { createNextLocaleEngine, type NextLocaleDriverContext } from './next-locale-drivers';
-import { useLocaleRuntimePathRouting } from './next-locale-runtime';
+import {
+  useLocaleRuntimePathRouting,
+  useLocaleRuntimePersistLocaleCookie,
+} from './next-locale-runtime';
 import { navigateClientLocaleHref } from './client-navigation';
 
 type ClientLocaleSyncContext = NextLocaleDriverContext;
@@ -21,6 +24,7 @@ const createClientLocaleSyncContext = (input: {
   currentLocale: string;
   acceptedLocales?: string[];
   pathRouting?: WaysPathRoutingConfig;
+  persistLocaleCookie?: boolean;
   setCurrentLocale: (locale: string) => void;
   navigateToPathname?: (pathname: string) => void;
   onLocaleSynced?: (locale: string) => void;
@@ -30,6 +34,7 @@ const createClientLocaleSyncContext = (input: {
     baseLocale: recognizeLocale(input.currentLocale) || 'en-GB',
     acceptedLocales: input.acceptedLocales,
     pathRouting: input.pathRouting,
+    persistLocaleCookie: input.persistLocaleCookie,
     currentLocale: input.currentLocale,
     setCurrentLocale: input.setCurrentLocale,
     navigateToPathname: input.navigateToPathname,
@@ -42,6 +47,7 @@ const resolveClientLocale = async (input: {
   currentLocale: string;
   acceptedLocales?: string[];
   pathRouting?: WaysPathRoutingConfig;
+  persistLocaleCookie?: boolean;
   setCurrentLocale: (locale: string) => void;
   navigateToPathname: (pathname: string) => void;
 }): Promise<void> => {
@@ -50,6 +56,7 @@ const resolveClientLocale = async (input: {
     currentLocale: input.currentLocale,
     acceptedLocales: input.acceptedLocales,
     pathRouting: input.pathRouting,
+    persistLocaleCookie: input.persistLocaleCookie,
     setCurrentLocale: input.setCurrentLocale,
     navigateToPathname: input.navigateToPathname,
     onLocaleSynced: input.setCurrentLocale,
@@ -68,6 +75,7 @@ const syncClientLocale = async (input: {
   currentLocale: string;
   acceptedLocales?: string[];
   pathRouting?: WaysPathRoutingConfig;
+  persistLocaleCookie?: boolean;
   setCurrentLocale: (locale: string) => void;
   navigateToPathname: (pathname: string) => void;
 }): Promise<void> => {
@@ -81,6 +89,7 @@ const syncClientLocale = async (input: {
     currentLocale: input.currentLocale,
     acceptedLocales: input.acceptedLocales,
     pathRouting: input.pathRouting,
+    persistLocaleCookie: input.persistLocaleCookie,
     setCurrentLocale: input.setCurrentLocale,
     navigateToPathname: input.navigateToPathname,
   });
@@ -98,6 +107,7 @@ export const LocalePathSync = ({ pathRouting }: { pathRouting?: WaysPathRoutingC
   const setCurrentLocale = useSetCurrentLocale();
   const router = useRouter();
   const runtimePathRouting = useLocaleRuntimePathRouting();
+  const runtimePersistLocaleCookie = useLocaleRuntimePersistLocaleCookie();
   const effectivePathRouting = pathRouting || runtimePathRouting;
 
   if (!effectivePathRouting) {
@@ -145,6 +155,7 @@ export const LocalePathSync = ({ pathRouting }: { pathRouting?: WaysPathRoutingC
       currentLocale,
       acceptedLocales: acceptedLocalesRef.current,
       pathRouting: effectivePathRouting,
+      persistLocaleCookie: runtimePersistLocaleCookie,
       setCurrentLocale,
       navigateToPathname: replacePathname,
     }).finally(() => {
@@ -158,7 +169,14 @@ export const LocalePathSync = ({ pathRouting }: { pathRouting?: WaysPathRoutingC
     return () => {
       cancelled = true;
     };
-  }, [currentLocale, effectivePathRouting, pathname, router, setCurrentLocale]);
+  }, [
+    currentLocale,
+    effectivePathRouting,
+    pathname,
+    router,
+    runtimePersistLocaleCookie,
+    setCurrentLocale,
+  ]);
 
   useEffect(() => {
     if (!hasCompletedInitialLocaleResolutionRef.current || typeof window === 'undefined') {
@@ -175,10 +193,18 @@ export const LocalePathSync = ({ pathRouting }: { pathRouting?: WaysPathRoutingC
       currentLocale,
       acceptedLocales: acceptedLocalesRef.current,
       pathRouting: effectivePathRouting,
+      persistLocaleCookie: runtimePersistLocaleCookie,
       setCurrentLocale,
       navigateToPathname: replacePathname,
     });
-  }, [currentLocale, effectivePathRouting, pathname, router, setCurrentLocale]);
+  }, [
+    currentLocale,
+    effectivePathRouting,
+    pathname,
+    router,
+    runtimePersistLocaleCookie,
+    setCurrentLocale,
+  ]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -190,6 +216,7 @@ export const LocalePathSync = ({ pathRouting }: { pathRouting?: WaysPathRoutingC
       currentLocale: localeRef.current,
       acceptedLocales: acceptedLocalesRef.current,
       pathRouting: pathRoutingRef.current,
+      persistLocaleCookie: runtimePersistLocaleCookie,
       setCurrentLocale,
       navigateToPathname: replacePathname,
     });
@@ -208,6 +235,7 @@ export const LocalePathSync = ({ pathRouting }: { pathRouting?: WaysPathRoutingC
         currentLocale: localeRef.current,
         acceptedLocales: acceptedLocalesRef.current,
         pathRouting: pathRoutingRef.current,
+        persistLocaleCookie: runtimePersistLocaleCookie,
         setCurrentLocale,
         navigateToPathname: replacePathname,
       });
@@ -228,7 +256,7 @@ export const LocalePathSync = ({ pathRouting }: { pathRouting?: WaysPathRoutingC
       cancelled = true;
       cleanup?.();
     };
-  }, [effectivePathRouting, router, setCurrentLocale]);
+  }, [effectivePathRouting, router, runtimePersistLocaleCookie, setCurrentLocale]);
 
   return null;
 };
