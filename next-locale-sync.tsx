@@ -2,9 +2,8 @@
 
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef } from 'react';
-import { readAcceptedLocalesFromWindow } from '@18ways/core/client-accepted-locales';
 import { consumeHandledClientLocaleSync } from '@18ways/core/client-locale-coordination';
-import { useCurrentLocale, useSetCurrentLocale } from '@18ways/react';
+import { useAcceptedLocales, useCurrentLocale, useSetCurrentLocale } from '@18ways/react';
 import {
   WaysPathRoutingConfig,
   normalizePathname,
@@ -104,6 +103,7 @@ const syncClientLocale = async (input: {
 export const LocalePathSync = ({ pathRouting }: { pathRouting?: WaysPathRoutingConfig } = {}) => {
   const pathname = normalizePathname(usePathname() || '/');
   const currentLocale = useCurrentLocale();
+  const acceptedLocales = useAcceptedLocales();
   const setCurrentLocale = useSetCurrentLocale();
   const router = useRouter();
   const runtimePathRouting = useLocaleRuntimePathRouting();
@@ -115,7 +115,7 @@ export const LocalePathSync = ({ pathRouting }: { pathRouting?: WaysPathRoutingC
   }
 
   const localeRef = useRef(currentLocale);
-  const acceptedLocalesRef = useRef(readAcceptedLocalesFromWindow());
+  const acceptedLocalesRef = useRef(acceptedLocales);
   const pathRoutingRef = useRef(effectivePathRouting);
   const hasStartedInitialLocaleResolutionRef = useRef(false);
   const hasCompletedInitialLocaleResolutionRef = useRef(false);
@@ -135,8 +135,8 @@ export const LocalePathSync = ({ pathRouting }: { pathRouting?: WaysPathRoutingC
   }, [effectivePathRouting]);
 
   useEffect(() => {
-    acceptedLocalesRef.current = readAcceptedLocalesFromWindow();
-  });
+    acceptedLocalesRef.current = acceptedLocales;
+  }, [acceptedLocales]);
 
   useEffect(() => {
     if (

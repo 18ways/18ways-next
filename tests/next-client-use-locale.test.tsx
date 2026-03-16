@@ -12,6 +12,7 @@ const router = {
 let pathname = '/';
 let searchParams = new URLSearchParams('foo=1');
 let currentLocale = 'en-GB';
+let acceptedLocales = ['en-GB', 'es-ES'];
 const setCurrentLocale = vi.fn((nextLocale: string) => {
   currentLocale = nextLocale;
 });
@@ -23,6 +24,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@18ways/react', () => ({
+  useAcceptedLocales: () => acceptedLocales,
   useCurrentLocale: () => currentLocale,
   useSetCurrentLocale: () => setCurrentLocale,
 }));
@@ -67,6 +69,7 @@ describe('useLocale', () => {
     pathname = '/';
     searchParams = new URLSearchParams('foo=1');
     currentLocale = 'en-GB';
+    acceptedLocales = ['en-GB', 'es-ES'];
     router.push.mockReset();
     router.replace.mockReset();
     router.refresh.mockReset();
@@ -108,6 +111,27 @@ describe('useLocale', () => {
       expect(router.replace).toHaveBeenCalledWith('/es-ES/docs?foo=1', { scroll: false });
       expect(router.refresh).not.toHaveBeenCalled();
       expect(setCurrentLocale).toHaveBeenCalledWith('es-ES');
+    });
+  });
+
+  it('replaces the active path locale when accepted locales are normalized to a different base variant', async () => {
+    pathname = '/en-GB';
+    currentLocale = 'en-US';
+    acceptedLocales = ['en-US', 'ja-JP'];
+    window.history.replaceState({}, '', '/en-GB');
+
+    const LocaleChangerToJapanese = () => {
+      const { setLocale } = useLocale({ pathRouting: PATH_ROUTING });
+
+      return <button onClick={() => setLocale('ja-JP')}>Switch</button>;
+    };
+
+    render(<LocaleChangerToJapanese />);
+    fireEvent.click(screen.getByRole('button', { name: 'Switch' }));
+
+    await waitFor(() => {
+      expect(router.replace).toHaveBeenCalledWith('/ja-JP?foo=1', { scroll: false });
+      expect(window.location.pathname).toBe('/ja-JP');
     });
   });
 

@@ -11,6 +11,7 @@ const router = {
 
 let pathname = '/';
 let currentLocale = 'en-GB';
+let acceptedLocales = ['en-GB', 'es-ES', 'fr-FR'];
 const setCurrentLocale = vi.fn((nextLocale: string) => {
   currentLocale = nextLocale;
 });
@@ -21,6 +22,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@18ways/react', () => ({
+  useAcceptedLocales: () => acceptedLocales,
   useCurrentLocale: () => currentLocale,
   useSetCurrentLocale: () => setCurrentLocale,
 }));
@@ -36,6 +38,7 @@ describe('LocalePathSync', () => {
   beforeEach(() => {
     pathname = '/';
     currentLocale = 'en-GB';
+    acceptedLocales = ['en-GB', 'es-ES', 'fr-FR'];
     router.push.mockReset();
     router.replace.mockReset();
     router.refresh.mockReset();
@@ -78,6 +81,31 @@ describe('LocalePathSync', () => {
       expect(router.replace).toHaveBeenCalledWith('/es-ES/docs', { scroll: false });
       expect(document.cookie).toContain('18ways_locale=es-ES');
       expect(setCurrentLocale).toHaveBeenCalledWith('es-ES');
+    });
+  });
+
+  it('replaces the active path locale when accepted locales are normalized to a different base variant', async () => {
+    pathname = '/en-GB';
+    currentLocale = 'en-US';
+    acceptedLocales = ['en-US', 'ja-JP'];
+    window.history.replaceState({}, '', '/en-GB');
+
+    const view = render(<LocalePathSync pathRouting={PATH_ROUTING} />);
+
+    await waitFor(() => {
+      expect(router.replace).not.toHaveBeenCalled();
+    });
+
+    setCurrentLocale.mockClear();
+    router.replace.mockClear();
+
+    currentLocale = 'ja-JP';
+    view.rerender(<LocalePathSync pathRouting={PATH_ROUTING} />);
+
+    await waitFor(() => {
+      expect(router.replace).toHaveBeenCalledWith('/ja-JP', { scroll: false });
+      expect(document.cookie).toContain('18ways_locale=ja-JP');
+      expect(setCurrentLocale).toHaveBeenCalledWith('ja-JP');
     });
   });
 

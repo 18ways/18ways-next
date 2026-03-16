@@ -266,4 +266,37 @@ describe('next init', () => {
     expect(response.headers.get('location')).toBe('https://18ways.com/en-GB/docs');
     expect(response.cookies.getAll()).toEqual([]);
   });
+
+  it('treats fetched accepted locales as locale prefixes during middleware sync', async () => {
+    const { init } = await import('../next');
+    const { fetchAcceptedLocales } = await import('@18ways/core/common');
+    vi.mocked(fetchAcceptedLocales).mockResolvedValueOnce(['ja-JP']);
+
+    const ways = init({
+      apiKey: 'test-api-key',
+      baseLocale: 'en-GB',
+      pathRouting: {
+        exclude: ['/dashboard'],
+      },
+      _apiUrl: 'https://example.com/api',
+    });
+
+    const response = await ways.waysMiddleware({
+      headers: new Headers({
+        host: '18ways.com',
+        'x-forwarded-proto': 'https',
+      }),
+      cookies: {
+        get: () => undefined,
+      },
+      nextUrl: {
+        pathname: '/ja-JP',
+        origin: 'https://18ways.com',
+        clone: () => new URL('https://18ways.com/ja-JP'),
+      },
+    } as any);
+
+    expect(response.headers.get('x-middleware-rewrite')).toBe('https://18ways.com/');
+    expect(response.headers.get('location')).toBeNull();
+  });
 });

@@ -24,6 +24,7 @@ import { cloneDeepValue, deepMerged } from '@18ways/core/object-utils';
 import {
   _composeRequestInitDecorators,
   fetchAcceptedLocales,
+  resolveAcceptedLocales,
   resolveOrigin,
 } from '@18ways/core/common';
 import { createNextRequestInitDecorator } from './next-request-init';
@@ -108,6 +109,17 @@ const resolvePersistLocaleCookiePolicy = (
   }
 
   return policy;
+};
+
+const resolveExplicitAcceptedLocales = (
+  baseLocale: string,
+  acceptedLocales?: string[]
+): string[] | undefined => {
+  if (!Array.isArray(acceptedLocales)) {
+    return undefined;
+  }
+
+  return resolveAcceptedLocales(baseLocale, acceptedLocales);
 };
 
 const METADATA_TRANSLATION_CONTEXT_KEY = '__18ways_metadata__';
@@ -340,16 +352,23 @@ const resolveMetadataInput = async (params: {
 
 export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
   const { pathRouting, ...waysRootOptions } = options;
-  const defaultAcceptedLocales = waysRootOptions.acceptedLocales;
+  const resolvedBaseLocale = recognizeLocale(waysRootOptions.baseLocale) || 'en-GB';
+  const explicitAcceptedLocales = resolveExplicitAcceptedLocales(
+    resolvedBaseLocale,
+    waysRootOptions.acceptedLocales
+  );
   const defaultMiddlewareOptions: InternalWaysMiddlewareOptions = {
-    baseLocale: waysRootOptions.baseLocale,
+    baseLocale: resolvedBaseLocale,
     pathRouting,
-    acceptedLocales: defaultAcceptedLocales,
-    supportedLocales: defaultAcceptedLocales,
+    acceptedLocales: explicitAcceptedLocales,
+    supportedLocales: explicitAcceptedLocales,
   };
-  const rootProps = { ...waysRootOptions };
+  const rootProps = {
+    ...waysRootOptions,
+    acceptedLocales: explicitAcceptedLocales,
+  };
   const localeProps: Partial<
-    Pick<WaysRootProps, 'locale' | 'baseLocale' | 'apiKey' | '_apiUrl'>
+    Pick<WaysRootProps, 'locale' | 'baseLocale' | 'apiKey' | '_apiUrl' | 'acceptedLocales'>
   > & {
     pathRouting?: WaysPathRoutingConfig;
     _requestInitDecorator?: WaysRootProps['_requestInitDecorator'];
@@ -358,6 +377,7 @@ export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
     baseLocale: waysRootOptions.baseLocale,
     apiKey: waysRootOptions.apiKey,
     _apiUrl: waysRootOptions._apiUrl,
+    acceptedLocales: explicitAcceptedLocales,
     _requestInitDecorator: waysRootOptions._requestInitDecorator,
     pathRouting,
   };
@@ -437,21 +457,24 @@ export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
   ) => {
     const resolvedBaseLocale = recognizeLocale(waysRootOptions.baseLocale) || 'en-GB';
     const acceptedLocales =
-      defaultAcceptedLocales ||
+      explicitAcceptedLocales ||
       (waysRootOptions.apiKey
-        ? await fetchAcceptedLocales(resolvedBaseLocale, {
-            apiUrl: waysRootOptions._apiUrl,
-            origin: resolveOrigin({
-              host: request.headers.get('x-forwarded-host') || request.headers.get('host'),
-              forwardedProto: request.headers.get('x-forwarded-proto'),
-            }),
-            apiKey: waysRootOptions.apiKey,
-            _requestInitDecorator: _composeRequestInitDecorators(
-              createNextRequestInitDecorator(),
-              waysRootOptions._requestInitDecorator
-            ),
-          })
-        : [...SUPPORTED_LOCALES]);
+        ? resolveAcceptedLocales(
+            resolvedBaseLocale,
+            await fetchAcceptedLocales(resolvedBaseLocale, {
+              apiUrl: waysRootOptions._apiUrl,
+              origin: resolveOrigin({
+                host: request.headers.get('x-forwarded-host') || request.headers.get('host'),
+                forwardedProto: request.headers.get('x-forwarded-proto'),
+              }),
+              apiKey: waysRootOptions.apiKey,
+              _requestInitDecorator: _composeRequestInitDecorators(
+                createNextRequestInitDecorator(),
+                waysRootOptions._requestInitDecorator
+              ),
+            })
+          )
+        : resolveAcceptedLocales(resolvedBaseLocale, SUPPORTED_LOCALES));
 
     const resolution = await resolveWaysMiddlewareInternal(request, {
       ...defaultMiddlewareOptions,
@@ -557,12 +580,22 @@ export const createWaysMiddlewareOptions = (input: {
   acceptedLocales?: string[];
   supportedLocales?: string[];
 }): WaysMiddlewareOptions => {
+  const resolvedBaseLocale = recognizeLocale(input.baseLocale) || 'en-GB';
+  const explicitAcceptedLocales = resolveExplicitAcceptedLocales(
+    resolvedBaseLocale,
+    input.acceptedLocales
+  );
+  const explicitSupportedLocales = resolveExplicitAcceptedLocales(
+    resolvedBaseLocale,
+    input.supportedLocales
+  );
+
   return {
     baseLocale: input.baseLocale,
     pathRouting: input.pathRouting,
     syncMode: input.syncMode,
-    acceptedLocales: input.acceptedLocales,
-    supportedLocales: input.supportedLocales,
+    acceptedLocales: explicitAcceptedLocales,
+    supportedLocales: explicitSupportedLocales,
   };
 };
 
@@ -665,8 +698,16 @@ const resolveWaysMiddlewareInternal = async (
 ): Promise<WaysMiddlewareResolution> => {
   const baseLocale = recognizeLocale(options?.baseLocale) || 'en-GB';
   const pathRouting = options?.pathRouting;
-  const supportedLocales = options?.supportedLocales;
-  const acceptedLocales = options?.acceptedLocales;
+  const hasAcceptedLocales =
+    !!options && Object.prototype.hasOwnProperty.call(options, 'acceptedLocales');
+  const hasSupportedLocales =
+    !!options && Object.prototype.hasOwnProperty.call(options, 'supportedLocales');
+  const acceptedLocales = hasAcceptedLocales
+    ? resolveAcceptedLocales(baseLocale, options?.acceptedLocales)
+    : undefined;
+  const supportedLocales = hasSupportedLocales
+    ? resolveAcceptedLocales(baseLocale, options?.supportedLocales)
+    : acceptedLocales;
   const persistLocaleCookie = options?.persistLocaleCookie !== false;
   const { context, state } = createWaysMiddlewareContext({
     request,

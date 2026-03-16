@@ -89,4 +89,44 @@ describe('rsc ways accepted locales handoff', () => {
       })
     );
   });
+
+  it('uses the base locale when resolving accepted locales for the app shell', async () => {
+    const { fetchAcceptedLocales } = await import('@18ways/core/common');
+    const { Ways } = await import('../rsc');
+
+    await Ways({
+      apiKey: 'test-api-key',
+      locale: 'es-ES',
+      baseLocale: 'en-US',
+      children: <div>Test App</div>,
+    });
+
+    expect(fetchAcceptedLocales).toHaveBeenCalledWith(
+      'en-US',
+      expect.objectContaining({
+        apiKey: 'test-api-key',
+        origin: 'https://18ways.com',
+      })
+    );
+  });
+
+  it('uses explicit accepted locales as the single app-shell source of truth', async () => {
+    const { fetchAcceptedLocales } = await import('@18ways/core/common');
+    const { Ways } = await import('../rsc');
+
+    const element = await Ways({
+      apiKey: 'test-api-key',
+      baseLocale: 'en-GB',
+      acceptedLocales: ['ja-JP'],
+      children: <div>Test App</div>,
+    });
+
+    expect(fetchAcceptedLocales).not.toHaveBeenCalled();
+
+    render(element);
+
+    await waitFor(() => {
+      expect(window.__18WAYS_ACCEPTED_LOCALES__).toEqual(['en-GB', 'ja-JP']);
+    });
+  });
 });

@@ -2,9 +2,8 @@
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback } from 'react';
-import { readAcceptedLocalesFromWindow } from '@18ways/core/client-accepted-locales';
 import { markClientLocaleSyncHandled } from '@18ways/core/client-locale-coordination';
-import { useCurrentLocale, useSetCurrentLocale } from '@18ways/react';
+import { useAcceptedLocales, useCurrentLocale, useSetCurrentLocale } from '@18ways/react';
 import {
   WaysPathRoutingConfig,
   extractRecognizedLocalePrefix,
@@ -133,6 +132,7 @@ export const useLocale = (
   setLocale: (nextLocale: string, options?: SetLocaleOptions) => void;
 } => {
   const contextLocale = useCurrentLocale();
+  const acceptedLocales = useAcceptedLocales();
   const setCurrentLocale = useSetCurrentLocale();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -150,7 +150,6 @@ export const useLocale = (
       }
 
       const normalizedPathname = normalizePathname(pathname || '/');
-      const acceptedLocales = readAcceptedLocalesFromWindow();
       const search =
         setLocaleOptions?.preserveSearch === false ? '' : searchParams?.toString() || '';
       const hash =
@@ -195,6 +194,7 @@ export const useLocale = (
       pathname,
       router,
       runtimePersistLocaleCookie,
+      acceptedLocales,
       searchParams,
       setCurrentLocale,
     ]

@@ -36,6 +36,16 @@ describe('next-client pathname localization', () => {
     ).toBe('/ja-JP');
   });
 
+  it('replaces the current path locale even when accepted locales only contain the base locale variant', () => {
+    expect(
+      localizePathname('/en-GB', 'ja-JP', {
+        acceptedLocales: ['en-US', 'ja-JP'],
+        currentLocale: 'en-GB',
+        pathRouting: PATH_ROUTING,
+      })
+    ).toBe('/ja-JP');
+  });
+
   it('preserves non-locale path segments', () => {
     expect(
       localizePathname('/japan/travel', 'ja-JP', {
