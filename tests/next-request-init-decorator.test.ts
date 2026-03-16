@@ -6,7 +6,7 @@ describe('createNextRequestInitDecorator', () => {
     const decorate = createNextRequestInitDecorator();
 
     const result = decorate({
-      url: 'https://example.com/api/enabled-languages',
+      url: 'https://example.com/api/config',
       method: 'GET',
       requestInit: {
         method: 'GET',
