@@ -6,7 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import chalk from 'chalk';
 import http from 'http';
-import { startMockApiServer, stopMockApiServer, MOCK_API_PORT } from '../utils/mock-api-server.js';
+import { startMockApiServer, stopMockApiServer, getMockApiPort } from '../utils/mock-api-server.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -889,7 +889,7 @@ async function startServer(app: TestApp): Promise<void> {
         NEXT_TELEMETRY_DISABLED: '1',
         PORT: String(app.port),
         // Ensure SSR (server-side) translation requests hit the local mock API server.
-        NEXT_PUBLIC_18WAYS_API_URL: `http://localhost:${MOCK_API_PORT}`,
+        NEXT_PUBLIC_18WAYS_API_URL: `http://localhost:${getMockApiPort()}`,
       },
       // Ensure the spawned command runs in its own process group so we can reliably
       // terminate the whole tree (shell + node + any grandchildren) on cleanup.
@@ -1401,7 +1401,7 @@ export async function runE2E(): Promise<boolean> {
   // Start mock API server for all tests (handles both SSR and browser requests)
   try {
     mockApiServer = await startMockApiServer('success');
-    log(`  ✓ Mock API server ready on port ${MOCK_API_PORT}`, chalk.green);
+    log(`  ✓ Mock API server ready on port ${getMockApiPort()}`, chalk.green);
   } catch (error: any) {
     log(`  ✗ Failed to start mock API server: ${error.message}`, chalk.red);
     return false;

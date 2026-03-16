@@ -5,7 +5,7 @@ import path from 'path';
 import http from 'http';
 import { fileURLToPath } from 'url';
 import { routeHandlerDescriptions, RouteHandlerName } from '../utils/route-handlers.js';
-import { startMockApiServer, stopMockApiServer, MOCK_API_PORT } from '../utils/mock-api-server.js';
+import { startMockApiServer, stopMockApiServer, getMockApiPort } from '../utils/mock-api-server.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -237,7 +237,7 @@ async function runDebugSession(app: TestApp, scenario: RouteHandlerName) {
 
   // Start mock API server for SSR and browser requests
   const mockApiServer = await startMockApiServer(scenario as any);
-  console.log(`🔧 Mock API server ready on port ${MOCK_API_PORT}`);
+  console.log(`🔧 Mock API server ready on port ${getMockApiPort()}`);
 
   const serverProcess = await startTestApp(app);
 

@@ -13,8 +13,12 @@ export type ScenarioName =
   | 'emptyResponse'
   | 'slowSuccess';
 
-export const MOCK_API_PORT = 4000;
+export const DEFAULT_MOCK_API_PORT = 4000;
 export const MOCK_API_HEALTH_PATH = '/__18ways_mock_api_health';
+export const getMockApiPort = (): number => {
+  const fromEnv = Number(process.env._18WAYS_E2E_MOCK_API_PORT || DEFAULT_MOCK_API_PORT);
+  return Number.isFinite(fromEnv) ? fromEnv : DEFAULT_MOCK_API_PORT;
+};
 
 function createTranslateResponse(
   postData: any,
@@ -173,12 +177,12 @@ export function createMockApiServer(scenario: ScenarioName): http.Server {
   return server;
 }
 
-async function verifyExistingMockApiServer(scenario: ScenarioName): Promise<boolean> {
+async function verifyExistingMockApiServer(scenario: ScenarioName, port: number): Promise<boolean> {
   return await new Promise<boolean>((resolve) => {
     const req = http.get(
       {
-        host: '127.0.0.1',
-        port: MOCK_API_PORT,
+        host: 'localhost',
+        port,
         path: MOCK_API_HEALTH_PATH,
       },
       (res) => {
@@ -215,51 +219,65 @@ async function verifyExistingMockApiServer(scenario: ScenarioName): Promise<bool
 }
 
 export async function startMockApiServer(scenario: ScenarioName): Promise<http.Server | null> {
-  const server = createMockApiServer(scenario);
-  let reusingExistingServer = false;
+  const listenOnPort = async (port: number, attempt = 0): Promise<http.Server | null> => {
+    const server = createMockApiServer(scenario);
 
-  await new Promise<void>((resolve, reject) => {
-    const cleanupListeners = () => {
-      server.removeAllListeners('listening');
-      server.removeAllListeners('error');
-    };
+    return await new Promise<http.Server | null>((resolve, reject) => {
+      const cleanupListeners = () => {
+        server.removeAllListeners('listening');
+        server.removeAllListeners('error');
+      };
 
-    server.on('listening', () => {
-      cleanupListeners();
-      resolve();
-    });
-
-    server.listen(MOCK_API_PORT, () => {
-      // Handled by the listening event so cleanup is centralized.
-    });
-
-    server.on('error', (err: any) => {
-      if (err.code === 'EADDRINUSE') {
-        void (async () => {
-          cleanupListeners();
-          reusingExistingServer = await verifyExistingMockApiServer(scenario);
-          if (reusingExistingServer) {
-            console.log(
-              `⚠️  Port ${MOCK_API_PORT} already in use, reusing matching mock API server`
-            );
-            resolve();
-            return;
-          }
-
-          reject(
-            new Error(
-              `Port ${MOCK_API_PORT} is already in use by a non-mock service or a mock server with a different scenario`
-            )
-          );
-        })();
-      } else {
+      server.on('listening', () => {
         cleanupListeners();
-        reject(err);
-      }
-    });
-  });
+        const address = server.address();
+        if (typeof address === 'object' && address) {
+          process.env._18WAYS_E2E_MOCK_API_PORT = String(address.port);
+        }
+        resolve(server);
+      });
 
-  return reusingExistingServer ? null : server;
+      server.on('error', (err: any) => {
+        cleanupListeners();
+
+        if (err.code === 'EADDRINUSE') {
+          void (async () => {
+            const reusingExistingServer = await verifyExistingMockApiServer(scenario, port);
+            if (reusingExistingServer) {
+              process.env._18WAYS_E2E_MOCK_API_PORT = String(port);
+              console.log(`⚠️  Port ${port} already in use, reusing matching mock API server`);
+              resolve(null);
+              return;
+            }
+
+            if (attempt >= 10) {
+              reject(
+                new Error(`No available mock API ports found starting from ${getMockApiPort()}`)
+              );
+              return;
+            }
+
+            try {
+              resolve(await listenOnPort(port + 1, attempt + 1));
+            } catch (fallbackError) {
+              reject(fallbackError);
+            }
+          })();
+          return;
+        }
+
+        const details =
+          err instanceof Error
+            ? `${err.name}: ${err.message}${(err as NodeJS.ErrnoException).code ? ` [${(err as NodeJS.ErrnoException).code}]` : ''}`
+            : String(err);
+        reject(new Error(details));
+      });
+
+      server.listen(port);
+    });
+  };
+
+  return await listenOnPort(getMockApiPort());
 }
 
 export function stopMockApiServer(server: http.Server | null): Promise<void> {
