@@ -228,7 +228,7 @@ describe('resolveWaysMiddleware locale engine', () => {
     expect(resolution.localizedPathname).toBe('/fr-FR/dashboard');
   });
 
-  it('keeps sitemap locale-aware by default', async () => {
+  it('keeps sitemap.xml unlocalized via the built-in auto-exclude list', async () => {
     const resolution = await resolveWaysMiddleware(
       createRequest({
         pathname: '/sitemap.xml',
@@ -237,11 +237,10 @@ describe('resolveWaysMiddleware locale engine', () => {
       { pathRouting: PATH_ROUTING }
     );
 
-    expect(resolution.locale).toBe('es-ES');
-    expect(resolution.action).toBe('redirect');
-    if (resolution.action === 'redirect') {
-      expect(resolution.redirectPathname).toBe('/es-ES/sitemap.xml');
-    }
+    expect(resolution.action).toBe('continue');
+    expect(resolution.unlocalizedPathname).toBe('/sitemap.xml');
+    expect(resolution.localizedPathname).toBe('/sitemap.xml');
+    expect(resolution.cookieUpdates).toEqual([]);
   });
 
   it('syncs the locale cookie to the resolved locale', async () => {

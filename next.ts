@@ -7,6 +7,7 @@ import {
 } from './rsc';
 import type { WaysProps, WaysRootProps } from '@18ways/react';
 import {
+  isAutoExcludedPathRoutingFilePath,
   SUPPORTED_LOCALES,
   WAYS_LOCALE_COOKIE_NAME,
   WaysPathRoutingConfig,
@@ -675,6 +676,19 @@ const resolveWaysMiddlewareInternal = async (
   options?: InternalWaysMiddlewareOptions
 ): Promise<WaysMiddlewareResolution> => {
   const baseLocale = recognizeLocale(options?.baseLocale) || 'en-GB';
+  const normalizedPathname = normalizePathname(request.nextUrl.pathname);
+
+  if (isAutoExcludedPathRoutingFilePath(normalizedPathname)) {
+    return {
+      action: 'continue',
+      locale: baseLocale,
+      unlocalizedPathname: normalizedPathname,
+      localizedPathname: normalizedPathname,
+      requestHeaders: new Headers(request.headers),
+      cookieUpdates: [],
+    };
+  }
+
   const pathRouting = options?.pathRouting;
   const hasAcceptedLocales =
     !!options && Object.prototype.hasOwnProperty.call(options, 'acceptedLocales');
@@ -836,6 +850,6 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 
 export const config = {
   matcher: [
-    '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
+    '/((?!_next|robots\\.txt$|sitemap\\.xml$|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
   ],
 };

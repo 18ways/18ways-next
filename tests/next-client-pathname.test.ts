@@ -88,6 +88,16 @@ describe('next-client pathname localization', () => {
     ).toBe('/llms.txt');
   });
 
+  it('keeps sitemap.xml unlocalized via the built-in auto-exclude list', () => {
+    expect(
+      localizePathname('/sitemap.xml', 'ja-JP', {
+        acceptedLocales: ['en-GB', 'ja-JP'],
+        currentLocale: 'en-GB',
+        pathRouting: PATH_ROUTING,
+      })
+    ).toBe('/sitemap.xml');
+  });
+
   it('leaves paths unchanged when path routing is omitted', () => {
     expect(
       localizePathname('/docs/getting-started', 'ja-JP', {
