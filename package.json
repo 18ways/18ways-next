@@ -23,6 +23,11 @@
       "import": "./rsc.tsx"
     }
   },
+  "files": [
+    "*.ts",
+    "*.tsx",
+    "global.d.ts"
+  ],
   "scripts": {
     "build": "echo '18ways-next build: source-only package'",
     "ts:check": "tsc --noEmit",
