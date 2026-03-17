@@ -14,13 +14,15 @@ npm install @18ways/next @18ways/react
 
 ## Basic translation
 
+Use this example exactly as written to test the library locally. `pk_dummy_demo_token` enables the built-in demo mode with the `Caesar Shift` language.
+
 ```tsx
 // app/layout.tsx
 import type { ReactNode } from 'react';
 import { init as initWays } from '@18ways/next/server';
 
 const { WaysRoot } = initWays({
-  apiKey: 'YOUR_18WAYS_PUBLIC_API_KEY',
+  apiKey: 'pk_dummy_demo_token',
   baseLocale: 'en-GB',
 });
 
