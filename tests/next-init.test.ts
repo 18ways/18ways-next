@@ -118,8 +118,7 @@ describe('next init', () => {
       sourceText: 'The paths by which language becomes local',
       locale: 'es-ES',
       key: '__18ways_metadata__',
-      textsHash: 'metadata-hash',
-      index: 0,
+      textHash: 'metadata-hash',
     });
 
     vi.mocked(commonModule.fetchSeed).mockResolvedValueOnce({
@@ -131,8 +130,8 @@ describe('next init', () => {
         {
           locale: 'es-ES',
           key: '__18ways_metadata__',
-          textsHash: 'metadata-hash',
-          translation: [encryptedDescription],
+          textHash: 'metadata-hash',
+          translation: encryptedDescription,
         },
       ],
       errors: [],
@@ -150,14 +149,14 @@ describe('next init', () => {
       description: t('The paths by which language becomes local'),
     }));
 
-    expect(commonModule.fetchSeed).toHaveBeenCalledWith(['__18ways_metadata__'], 'es-ES');
+    expect(commonModule.fetchSeed).not.toHaveBeenCalled();
     expect(commonModule.fetchTranslations).toHaveBeenCalledWith([
       {
         key: '__18ways_metadata__',
-        textsHash: 'metadata-hash',
+        textHash: 'metadata-hash',
         baseLocale: 'en-GB',
         targetLocale: 'es-ES',
-        texts: ['The paths by which language becomes local'],
+        text: 'The paths by which language becomes local',
       },
     ]);
 
@@ -190,7 +189,7 @@ describe('next init', () => {
       apiKey: 'test-api-key',
       baseLocale: 'en-GB',
       pathRouting: {
-        exclude: ['/dashboard'],
+        exclude: [],
       },
       _apiUrl: 'https://example.com/api',
     });
@@ -234,7 +233,7 @@ describe('next init', () => {
       baseLocale: 'en-GB',
       persistLocaleCookie: (request) => request.cookies.get('functional-consent')?.value === 'yes',
       pathRouting: {
-        exclude: ['/dashboard'],
+        exclude: [],
       },
       _apiUrl: 'https://example.com/api',
     });
@@ -276,7 +275,7 @@ describe('next init', () => {
       apiKey: 'test-api-key',
       baseLocale: 'en-GB',
       pathRouting: {
-        exclude: ['/dashboard'],
+        exclude: [],
       },
       _apiUrl: 'https://example.com/api',
     });

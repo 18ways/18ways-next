@@ -8,7 +8,7 @@ type RequestInput = {
 };
 
 const PATH_ROUTING = {
-  exclude: ['/dashboard'],
+  exclude: [],
 };
 
 const createRequest = ({ pathname, acceptLanguage }: RequestInput) => {

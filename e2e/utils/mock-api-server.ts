@@ -1,6 +1,6 @@
 import http from 'http';
 import { textTranslations } from './route-handlers.js';
-import { encryptTranslationValues } from './translation-crypto';
+import { encryptTranslationValue } from './translation-crypto';
 
 export type ScenarioName =
   | 'success'
@@ -25,7 +25,6 @@ function createTranslateResponse(
   scenario: ScenarioName
 ): { status: number; body: string } {
   if (scenario === 'networkFailure') {
-    // For network failure, just close the connection
     return { status: 500, body: '' };
   }
 
@@ -45,60 +44,29 @@ function createTranslateResponse(
     return { status: 200, body: JSON.stringify({ data: [], errors: [] }) };
   }
 
-  if (scenario === 'spanishFails') {
-    const results =
-      postData?.payload
-        ?.map((item: any) => {
-          const { key, targetLocale, textsHash, texts } = item;
+  const buildResult = (item: any) => {
+    const { key, targetLocale, textHash, text } = item;
 
-          // Fail for Spanish
-          if (targetLocale === 'es-ES') {
-            return null;
-          }
+    if (scenario === 'spanishFails' && targetLocale === 'es-ES') {
+      return null;
+    }
 
-          const translation = texts.map((text: string) => {
-            return textTranslations[text]?.[targetLocale] || text;
-          });
-
-          return {
-            locale: targetLocale,
-            key,
-            textsHash,
-            translation: encryptTranslationValues({
-              translatedTexts: translation,
-              sourceTexts: texts,
-              locale: targetLocale,
-              key,
-              textsHash,
-            }),
-          };
-        })
-        .filter(Boolean) || [];
-
-    return { status: 200, body: JSON.stringify({ data: results, errors: [] }) };
-  }
-
-  // success and slowSuccess scenarios (slowSuccess delay handled elsewhere)
-  const results =
-    postData?.payload?.map((item: any) => {
-      const { key, targetLocale, textsHash, texts } = item;
-      const translation = texts.map((text: string) => {
-        return textTranslations[text]?.[targetLocale] || text;
-      });
-      return {
+    const translatedText = textTranslations[text]?.[targetLocale] || text;
+    return {
+      locale: targetLocale,
+      key,
+      textHash,
+      translation: encryptTranslationValue({
+        translatedText,
+        sourceText: text,
         locale: targetLocale,
         key,
-        textsHash,
-        translation: encryptTranslationValues({
-          translatedTexts: translation,
-          sourceTexts: texts,
-          locale: targetLocale,
-          key,
-          textsHash,
-        }),
-      };
-    }) || [];
+        textHash,
+      }),
+    };
+  };
 
+  const results = postData?.payload?.map(buildResult).filter(Boolean) || [];
   return { status: 200, body: JSON.stringify({ data: results, errors: [] }) };
 }
 
@@ -120,11 +88,7 @@ function createSeedResponse(
     return { status: 200, body: JSON.stringify({ data: {}, errors: [] }) };
   }
 
-  // Seed endpoint receives context keys (like "app") but textTranslations is keyed by actual text
-  // In a real implementation, the backend would look up translations by context key
-  // For now, return empty data and let the /translate endpoint handle actual translations
-  const seedData: Record<string, string[]> = {};
-
+  const seedData: Record<string, string> = {};
   return { status: 200, body: JSON.stringify({ data: seedData, errors: [] }) };
 }
 
@@ -137,12 +101,10 @@ export function createMockApiServer(scenario: ScenarioName): http.Server {
     });
 
     req.on('end', () => {
-      // Set CORS headers
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key');
 
-      // Handle preflight
       if (req.method === 'OPTIONS') {
         res.writeHead(200);
         res.end();
@@ -286,6 +248,7 @@ export function stopMockApiServer(server: http.Server | null): Promise<void> {
       resolve();
       return;
     }
+
     server.close(() => {
       resolve();
     });

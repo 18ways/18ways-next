@@ -29,7 +29,7 @@ vi.mock('@18ways/core/common', async () => {
 import { generateWaysMetadata } from '../rsc';
 
 const PATH_ROUTING = {
-  exclude: ['/dashboard'],
+  exclude: [],
 };
 
 describe('rsc metadata generation', () => {

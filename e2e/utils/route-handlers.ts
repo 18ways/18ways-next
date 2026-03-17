@@ -1,5 +1,5 @@
 import { Route } from '@playwright/test';
-import { encryptTranslationValues } from './translation-crypto';
+import { encryptTranslationValue } from './translation-crypto';
 
 export interface RouteHandlerOptions {
   delayMs?: number;
@@ -72,22 +72,19 @@ export const textTranslations: Record<string, Record<string, string>> = {
 function createSuccessResponse(postData: any): string {
   const results =
     postData?.payload?.map((item: any) => {
-      const { key, targetLocale, textsHash, texts } = item;
-
-      const translation = texts.map((text: string) => {
-        return textTranslations[text]?.[targetLocale] || text;
-      });
+      const { key, targetLocale, textHash, text } = item;
+      const translatedText = textTranslations[text]?.[targetLocale] || text;
 
       return {
         locale: targetLocale,
         key,
-        textsHash,
-        translation: encryptTranslationValues({
-          translatedTexts: translation,
-          sourceTexts: texts,
+        textHash,
+        translation: encryptTranslationValue({
+          translatedText,
+          sourceText: text,
           locale: targetLocale,
           key,
-          textsHash,
+          textHash,
         }),
       };
     }) || [];
@@ -205,10 +202,7 @@ function createSeedSuccessResponse(postData: any): string {
     return JSON.stringify({ data: {}, errors: [] });
   }
 
-  // Seed endpoint receives context keys (like "app") but textTranslations is keyed by actual text
-  // In a real implementation, the backend would look up translations by context key
-  // For now, return empty data and let the /translate endpoint handle actual translations
-  const seedData: Record<string, string[]> = {};
+  const seedData: Record<string, string> = {};
 
   return JSON.stringify({ data: seedData, errors: [] });
 }
@@ -264,9 +258,10 @@ export const seedHandlers = {
         500,
         JSON.stringify({ error: 'Internal server error', data: {}, errors: [] })
       );
-    } else {
-      await fulfillJson(route, 200, createSeedSuccessResponse(postData));
+      return;
     }
+
+    await fulfillJson(route, 200, createSeedSuccessResponse(postData));
   },
 
   success: async (route: Route) => {

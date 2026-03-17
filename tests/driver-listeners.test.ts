@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { PathLocaleDriver } from '@18ways/core/path-locale-driver';
 
 const PATH_ROUTING = {
-  exclude: ['/dashboard'],
+  exclude: [],
 };
 
 describe('PathLocaleDriver listeners', () => {

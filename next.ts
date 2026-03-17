@@ -176,19 +176,19 @@ const collectMetadataTextEntries = (metadata: Record<string, any>): MetadataText
 };
 
 const buildMetadataTranslationMap = async (params: {
-  texts: string[];
+  entries: string[];
   targetLocale: string;
   baseLocale: string;
   initOptions: WaysNextInitOptions;
 }): Promise<Map<string, string>> => {
-  const { texts, targetLocale, baseLocale, initOptions } = params;
+  const { entries, targetLocale, baseLocale, initOptions } = params;
 
   if (targetLocale === baseLocale) {
     return new Map();
   }
 
   const normalizedTexts = Array.from(
-    new Set(texts.map((text) => text.trim()).filter((text) => text.length > 0))
+    new Set(entries.map((text) => text.trim()).filter((text) => text.length > 0))
   );
   if (!normalizedTexts.length) {
     return new Map();
@@ -209,67 +209,45 @@ const buildMetadataTranslationMap = async (params: {
       ),
     });
 
-    const textsHash = common.generateHashId([
-      METADATA_TRANSLATION_CONTEXT_KEY,
+    const requests = normalizedTexts.map((text) => ({
+      key: METADATA_TRANSLATION_CONTEXT_KEY,
+      textHash: common.generateHashId([text, METADATA_TRANSLATION_CONTEXT_KEY]),
       baseLocale,
       targetLocale,
-      normalizedTexts,
-    ]);
+      text,
+    }));
 
-    const seedResult = await common.fetchSeed([METADATA_TRANSLATION_CONTEXT_KEY], targetLocale);
-    let translated =
-      seedResult?.data &&
-      typeof seedResult.data === 'object' &&
-      !Array.isArray(seedResult.data) &&
-      seedResult.data[METADATA_TRANSLATION_CONTEXT_KEY] &&
-      typeof seedResult.data[METADATA_TRANSLATION_CONTEXT_KEY] === 'object'
-        ? (seedResult.data[METADATA_TRANSLATION_CONTEXT_KEY] as Record<string, string[]>)[textsHash]
-        : undefined;
-
-    if (!translated || translated.length !== normalizedTexts.length) {
-      const result = await common.fetchTranslations([
-        {
-          key: METADATA_TRANSLATION_CONTEXT_KEY,
-          textsHash,
-          baseLocale,
-          targetLocale,
-          texts: normalizedTexts,
-        },
-      ]);
-
-      translated = result.data.find(
-        (entry) =>
-          entry.key === METADATA_TRANSLATION_CONTEXT_KEY &&
-          entry.locale === targetLocale &&
-          entry.textsHash === textsHash
-      )?.translation;
-    }
-
-    if (!translated || translated.length !== normalizedTexts.length) {
+    const result = await common.fetchTranslations(requests);
+    if (!result.data.length) {
       return new Map();
     }
 
-    const decrypted = normalizedTexts.map((sourceText, index) => {
-      const encryptedText = translated[index];
-      if (typeof encryptedText !== 'string') {
-        return sourceText;
+    const translatedBySource = new Map<string, string>();
+    result.data.forEach((entry) => {
+      const request = requests.find((candidate) => candidate.textHash === entry.textHash);
+      if (!request) {
+        return;
       }
 
       try {
-        return crypto.decryptTranslationValue({
-          encryptedText,
-          sourceText,
-          locale: targetLocale,
-          key: METADATA_TRANSLATION_CONTEXT_KEY,
-          textsHash,
-          index,
-        });
+        translatedBySource.set(
+          request.text,
+          crypto.decryptTranslationValue({
+            encryptedText: entry.translation,
+            sourceText: request.text,
+            locale: targetLocale,
+            key: METADATA_TRANSLATION_CONTEXT_KEY,
+            textHash: entry.textHash,
+          })
+        );
       } catch {
-        return sourceText;
+        translatedBySource.set(request.text, request.text);
       }
     });
 
-    return new Map(normalizedTexts.map((text, index) => [text, decrypted[index] ?? text] as const));
+    return new Map(
+      normalizedTexts.map((text) => [text, translatedBySource.get(text) ?? text] as const)
+    );
   } catch {
     return new Map();
   }
@@ -293,7 +271,7 @@ const translateMetadataObject = async (params: {
   }
 
   const translationMap = await buildMetadataTranslationMap({
-    texts: entries.map((entry) => entry.value),
+    entries: entries.map((entry) => entry.value),
     targetLocale,
     baseLocale,
     initOptions,
@@ -337,7 +315,7 @@ const resolveMetadataInput = async (params: {
   });
 
   const translationMap = await buildMetadataTranslationMap({
-    texts: collectedTexts,
+    entries: collectedTexts,
     targetLocale,
     baseLocale,
     initOptions,

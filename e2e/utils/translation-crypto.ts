@@ -21,35 +21,27 @@ const deriveKeys = (sourceText: string): { encryptionKey: Buffer; macKey: Buffer
 const buildMacInput = (aad: string, iv: Buffer, ciphertext: Buffer): Buffer =>
   Buffer.concat([Buffer.from(`${MAC_MESSAGE_PREFIX}|${aad}|`, 'utf8'), iv, ciphertext]);
 
-export const encryptTranslationValues = ({
-  translatedTexts,
-  sourceTexts,
+export const encryptTranslationValue = ({
+  translatedText,
+  sourceText,
   locale,
   key,
-  textsHash,
+  textHash,
 }: {
-  translatedTexts: string[];
-  sourceTexts: string[];
+  translatedText: string;
+  sourceText: string;
   locale: string;
   key: string;
-  textsHash: string;
-}): string[] => {
-  if (translatedTexts.length !== sourceTexts.length) {
-    throw new Error(
-      `Cannot encrypt translation values: source and translated length mismatch (${sourceTexts.length} vs ${translatedTexts.length})`
-    );
-  }
+  textHash: string;
+}): string => {
+  const { encryptionKey, macKey } = deriveKeys(sourceText);
+  const aad = `${ENCRYPTION_VERSION}|${locale}|${key}|${textHash}`;
+  const iv = randomBytes(16);
+  const cipher = createCipheriv('aes-256-cbc', encryptionKey, iv);
+  const ciphertext = Buffer.concat([cipher.update(translatedText, 'utf8'), cipher.final()]);
+  const mac = createHmac('sha256', macKey)
+    .update(buildMacInput(aad, iv, ciphertext))
+    .digest();
 
-  return translatedTexts.map((translatedText, index) => {
-    const { encryptionKey, macKey } = deriveKeys(sourceTexts[index]);
-    const aad = `${ENCRYPTION_VERSION}|${locale}|${key}|${textsHash}|${index}`;
-    const iv = randomBytes(16);
-    const cipher = createCipheriv('aes-256-cbc', encryptionKey, iv);
-    const ciphertext = Buffer.concat([cipher.update(translatedText, 'utf8'), cipher.final()]);
-    const mac = createHmac('sha256', macKey)
-      .update(buildMacInput(aad, iv, ciphertext))
-      .digest();
-
-    return `${ENCRYPTION_VERSION}.${toBase64Url(iv)}.${toBase64Url(mac)}.${toBase64Url(ciphertext)}`;
-  });
+  return `${ENCRYPTION_VERSION}.${toBase64Url(iv)}.${toBase64Url(mac)}.${toBase64Url(ciphertext)}`;
 };
