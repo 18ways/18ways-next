@@ -78,6 +78,16 @@ describe('next-client pathname localization', () => {
     ).toBe('/robots.txt');
   });
 
+  it('keeps llms.txt unlocalized via the built-in auto-exclude list', () => {
+    expect(
+      localizePathname('/llms.txt', 'ja-JP', {
+        acceptedLocales: ['en-GB', 'ja-JP'],
+        currentLocale: 'en-GB',
+        pathRouting: PATH_ROUTING,
+      })
+    ).toBe('/llms.txt');
+  });
+
   it('leaves paths unchanged when path routing is omitted', () => {
     expect(
       localizePathname('/docs/getting-started', 'ja-JP', {
