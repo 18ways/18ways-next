@@ -21,6 +21,7 @@ Use this example exactly as written to test the library locally. `pk_dummy_demo_
 import type { ReactNode } from 'react';
 import { init as initWays } from '@18ways/next/server';
 
+// This should be called in a server component.
 const { WaysRoot } = initWays({
   apiKey: 'pk_dummy_demo_token',
   baseLocale: 'en-GB',
@@ -41,7 +42,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 // app/page.tsx
 'use client';
 
-import { LanguageSwitcher, Ways, T } from '@18ways/react';
+import { LanguageSwitcher, T } from '@18ways/react';
 import { useLocale } from '@18ways/next/client';
 
 export default function Page() {
@@ -53,12 +54,12 @@ export default function Page() {
         currentLocale={locale}
         onLocaleChange={(nextLocale) => setLocale(nextLocale)}
       />
-      <Ways context="checkout.button">
-        <T>Pay now</T>
-      </Ways>
+      <T>Hello world</T>
     </>
   );
 }
 ```
+
+For a lightweight client-only demo app, see `examples/basic/`. The example keeps a note showing where `initWays(...)` should be called in a server component.
 
 Docs: [18ways.com/docs](https://18ways.com/docs)

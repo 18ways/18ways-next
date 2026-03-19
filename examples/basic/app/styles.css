@@ -1,0 +1,89 @@
+@import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&display=swap');
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: Comfortaa, var(--font-comfortaa), 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+}
+
+.next-demo-body {
+  background: linear-gradient(180deg, #f9fbfa 0%, #dbf0e3 100%);
+}
+
+.next-demo-shell {
+  min-height: 100vh;
+  max-width: 800px;
+  margin: 0 auto;
+  display: grid;
+  align-content: center;
+  gap: 18px;
+  padding: 32px;
+  color: #052015;
+}
+
+.next-demo-card {
+  padding: 28px;
+  border: 1px solid #c8d7d0;
+  border-radius: 20px;
+  background: rgba(249, 251, 250, 0.94);
+  color: #052015;
+  box-shadow: 0 24px 80px rgba(5, 32, 21, 0.08);
+}
+
+.next-demo-eyebrow {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #119955;
+}
+
+.next-demo-title {
+  margin: 12px 0 0;
+  font-size: 42px;
+  line-height: 1.02;
+  color: #052015;
+}
+
+.next-demo-copy {
+  margin: 14px 0 0;
+  font-size: 18px;
+  line-height: 1.6;
+  color: #495b54;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+.next-demo-switcher {
+  justify-self: end;
+}
+
+.ways-switcher {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 14px;
+  border: 1px solid #a7bbb2;
+  border-radius: 999px;
+  background: #f9fbfa;
+  color: #052015;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: Comfortaa, var(--font-comfortaa), 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+}
+
+.ways-switcher__label {
+  color: #33423c;
+}
+
+.ways-switcher__select {
+  border: none;
+  background: transparent;
+  color: #052015;
+  font: inherit;
+  outline: none;
+}

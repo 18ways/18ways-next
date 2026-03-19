@@ -1,0 +1,16 @@
+{
+  "name": "@18ways/next-basic-example",
+  "private": true,
+  "dependencies": {
+    "@18ways/next": "1.0.1",
+    "@18ways/react": "1.0.1",
+    "next": "15.5.9",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.5",
+    "typescript": "^5.6.2"
+  }
+}
