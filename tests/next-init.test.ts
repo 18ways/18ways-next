@@ -1,301 +1,131 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { withWays } from '../config';
 
-vi.mock('../rsc', () => ({
-  Ways: vi.fn(async (props: { children: unknown }) => props.children),
-  generateWaysMetadata: vi.fn(async () => ({
-    alternates: { canonical: 'https://example.com/es-ES/docs' },
-    openGraph: { locale: 'es_ES' },
-  })),
-  getWaysHtmlAttrs: vi.fn(async () => ({
-    lang: 'es-ES',
-    dir: 'ltr',
-  })),
-  WAYS_LOCALE_COOKIE_NAME: '18ways_locale',
-}));
+const originalCwd = process.cwd();
+const createdDirs: string[] = [];
 
-vi.mock('@18ways/core/common', async () => {
-  const actual = await vi.importActual<typeof import('@18ways/core/common')>('@18ways/core/common');
+const createTempProject = (): string => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), '18ways-next-'));
+  createdDirs.push(tempDir);
+  return tempDir;
+};
 
-  return {
-    ...actual,
-    init: vi.fn(),
-    generateHashId: vi.fn(() => 'metadata-hash'),
-    fetchSeed: vi.fn(async () => ({
-      data: {},
-      errors: [],
-    })),
-    fetchTranslations: vi.fn(async () => ({
-      data: [],
-      errors: [],
-    })),
-    fetchAcceptedLocales: vi.fn(async () => ['en-GB']),
-  };
+const writeFile = (
+  filePath: string,
+  contents = 'export default function Page() { return null; }\n'
+) => {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, contents, 'utf8');
+};
+
+afterEach(() => {
+  process.chdir(originalCwd);
+
+  while (createdDirs.length > 0) {
+    const dir = createdDirs.pop();
+    if (dir) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }
 });
 
-describe('next init', () => {
-  beforeEach(() => {
-    vi.resetModules();
-    vi.clearAllMocks();
-  });
+describe('withWays', () => {
+  it('returns an empty fragment for app-router config', () => {
+    const projectRoot = createTempProject();
+    process.chdir(projectRoot);
 
-  it('binds htmlAttrs to init locale options', async () => {
-    const { init } = await import('../next');
-    const serverModule = await import('../rsc');
-
-    const ways = init({
-      apiKey: 'test-api-key',
-      baseLocale: 'en-GB',
-      _apiUrl: 'https://example.com/api',
-    });
-    expect(typeof ways.waysMiddleware).toBe('function');
-
-    const attrs = await ways.htmlAttrs();
-
-    expect(serverModule.getWaysHtmlAttrs).toHaveBeenCalledWith(
-      expect.objectContaining({
-        locale: undefined,
+    const fragment = withWays(
+      {},
+      {
+        apiKey: 'pk_test_generated',
         baseLocale: 'en-GB',
-        apiKey: 'test-api-key',
-        _apiUrl: 'https://example.com/api',
-      })
-    );
-    expect(attrs).toEqual({
-      lang: 'es-ES',
-      dir: 'ltr',
-    });
-  });
-
-  it('merges app metadata with generated ways metadata', async () => {
-    const { init } = await import('../next');
-    const serverModule = await import('../rsc');
-
-    const ways = init({
-      apiKey: 'test-api-key',
-      baseLocale: 'en-GB',
-      _apiUrl: 'https://example.com/api',
-    });
-
-    const metadata = await ways.generateWaysMetadata(
-      {
-        title: '18ways.com',
-        description: 'The paths by which language becomes local',
-        openGraph: {
-          title: '18ways',
-        },
-      },
-      {
-        origin: 'https://18ways.com',
+        router: 'app',
+        localeParamName: 'lang',
+        persistLocaleCookie: false,
       }
     );
 
-    expect(serverModule.generateWaysMetadata).toHaveBeenCalledWith(
-      expect.objectContaining({
-        locale: undefined,
-        baseLocale: 'en-GB',
-        apiKey: 'test-api-key',
-        _apiUrl: 'https://example.com/api',
-        origin: 'https://18ways.com',
-      })
-    );
-
-    expect(metadata).toEqual({
-      title: '18ways.com',
-      description: 'The paths by which language becomes local',
-      alternates: { canonical: 'https://example.com/es-ES/docs' },
-      openGraph: {
-        title: '18ways',
-        locale: 'es_ES',
-      },
-    });
+    expect(fragment).toEqual({});
   });
 
-  it('supports callback metadata with translator function', async () => {
-    const { init } = await import('../next');
-    const commonModule = await import('@18ways/core/common');
-    const cryptoModule = await import('@18ways/core/crypto');
-    const encryptedDescription = cryptoModule.encryptTranslationValue({
-      translatedText: 'Las rutas por las que el idioma se vuelve local',
-      sourceText: 'The paths by which language becomes local',
-      locale: 'es-ES',
-      key: '__18ways_metadata__',
-      textHash: 'metadata-hash',
-    });
+  it('returns path-router i18n config', () => {
+    const projectRoot = createTempProject();
+    process.chdir(projectRoot);
 
-    vi.mocked(commonModule.fetchSeed).mockResolvedValueOnce({
-      data: {},
-      errors: [],
-    });
-    vi.mocked(commonModule.fetchTranslations).mockResolvedValueOnce({
-      data: [
-        {
-          locale: 'es-ES',
-          key: '__18ways_metadata__',
-          textHash: 'metadata-hash',
-          translation: encryptedDescription,
-        },
-      ],
-      errors: [],
-    });
-
-    const ways = init({
-      apiKey: 'test-api-key',
-      locale: 'es-ES',
-      baseLocale: 'en-GB',
-      _apiUrl: 'https://example.com/api',
-    });
-
-    const metadata = await ways.generateWaysMetadata((t) => ({
-      title: '18ways.com',
-      description: t('The paths by which language becomes local'),
-    }));
-
-    expect(commonModule.fetchSeed).not.toHaveBeenCalled();
-    expect(commonModule.fetchTranslations).toHaveBeenCalledWith([
+    const fragment = withWays(
+      {},
       {
-        key: '__18ways_metadata__',
-        textHash: 'metadata-hash',
+        apiKey: 'pk_test_generated',
         baseLocale: 'en-GB',
-        targetLocale: 'es-ES',
-        text: 'The paths by which language becomes local',
-      },
-    ]);
-
-    expect(metadata).toEqual({
-      title: '18ways.com',
-      description: 'Las rutas por las que el idioma se vuelve local',
-      alternates: { canonical: 'https://example.com/es-ES/docs' },
-      openGraph: {
-        locale: 'es_ES',
-      },
-    });
-  });
-
-  it('builds middleware options with package defaults', async () => {
-    const { createWaysMiddlewareOptions } = await import('../next');
-
-    const options = createWaysMiddlewareOptions({
-      baseLocale: 'en-GB',
-    });
-
-    expect(options.baseLocale).toBe('en-GB');
-    expect(options.pathRouting).toBeUndefined();
-  });
-
-  it('resolves accepted locales inside init middleware handling', async () => {
-    const { init } = await import('../next');
-    const { fetchAcceptedLocales } = await import('@18ways/core/common');
-
-    const ways = init({
-      apiKey: 'test-api-key',
-      baseLocale: 'en-GB',
-      pathRouting: {
-        exclude: [],
-      },
-      _apiUrl: 'https://example.com/api',
-    });
-
-    const headers = new Headers({
-      'accept-language': 'en-US,en;q=0.9',
-      host: '18ways.com',
-      'x-forwarded-proto': 'https',
-    });
-
-    const response = await ways.waysMiddleware({
-      headers,
-      cookies: {
-        get: () => undefined,
-      },
-      nextUrl: {
-        pathname: '/docs',
-        origin: 'https://18ways.com',
-        clone: () => new URL('https://18ways.com/docs'),
-      },
-    } as any);
-
-    expect(fetchAcceptedLocales).toHaveBeenCalledWith(
-      'en-GB',
-      expect.objectContaining({
-        origin: 'https://18ways.com',
-        apiKey: 'test-api-key',
-        apiUrl: 'https://example.com/api',
-        _requestInitDecorator: expect.any(Function),
-      })
+        router: 'path',
+        acceptedLocales: ['en-GB', 'fr-FR'],
+        domains: [
+          { domain: 'example.com', defaultLocale: 'en-GB' },
+          { domain: 'example.fr', defaultLocale: 'fr-FR', locales: ['fr-FR'] },
+        ],
+      }
     );
-    expect(response.headers.get('location')).toBe('https://18ways.com/en-GB/docs');
+
+    expect(fragment).toEqual({
+      i18n: {
+        locales: ['en-GB', 'fr-FR'],
+        defaultLocale: 'en-GB',
+        domains: [
+          { domain: 'example.com', defaultLocale: 'en-GB' },
+          { domain: 'example.fr', defaultLocale: 'fr-FR', locales: ['fr-FR'] },
+        ],
+        localeDetection: false,
+      },
+    });
   });
 
-  it('applies middleware from init with a request-aware cookie persistence policy', async () => {
-    const { init } = await import('../next');
-    const { fetchAcceptedLocales } = await import('@18ways/core/common');
+  it('returns an empty fragment for router none', () => {
+    const projectRoot = createTempProject();
+    process.chdir(projectRoot);
 
-    const ways = init({
-      apiKey: 'test-api-key',
-      baseLocale: 'en-GB',
-      persistLocaleCookie: (request) => request.cookies.get('functional-consent')?.value === 'yes',
-      pathRouting: {
-        exclude: [],
-      },
-      _apiUrl: 'https://example.com/api',
-    });
-
-    const response = await ways.waysMiddleware({
-      headers: new Headers({
-        'accept-language': 'en-US,en;q=0.9',
-        host: '18ways.com',
-        'x-forwarded-proto': 'https',
-      }),
-      cookies: {
-        get: () => undefined,
-      },
-      nextUrl: {
-        pathname: '/docs',
-        origin: 'https://18ways.com',
-        clone: () => new URL('https://18ways.com/docs'),
-      },
-    } as any);
-
-    expect(fetchAcceptedLocales).toHaveBeenCalledWith(
-      'en-GB',
-      expect.objectContaining({
-        origin: 'https://18ways.com',
-        apiKey: 'test-api-key',
-        apiUrl: 'https://example.com/api',
-      })
+    const fragment = withWays(
+      {},
+      {
+        apiKey: 'pk_test_generated',
+        baseLocale: 'en-GB',
+        router: 'none',
+      }
     );
-    expect(response.headers.get('location')).toBe('https://18ways.com/en-GB/docs');
-    expect(response.cookies.getAll()).toEqual([]);
+
+    expect(fragment).toEqual({});
   });
 
-  it('treats fetched accepted locales as locale prefixes during middleware sync', async () => {
-    const { init } = await import('../next');
-    const { fetchAcceptedLocales } = await import('@18ways/core/common');
-    vi.mocked(fetchAcceptedLocales).mockResolvedValueOnce(['ja-JP']);
+  it('loads 18ways.config.ts when withWays is called without explicit options', () => {
+    const projectRoot = createTempProject();
+    process.chdir(projectRoot);
 
-    const ways = init({
-      apiKey: 'test-api-key',
-      baseLocale: 'en-GB',
-      pathRouting: {
-        exclude: [],
-      },
-      _apiUrl: 'https://example.com/api',
+    writeFile(
+      path.join(projectRoot, '18ways.config.ts'),
+      [
+        'export default {',
+        "  apiKey: 'pk_test_generated',",
+        "  baseLocale: 'en-GB',",
+        "  router: 'path',",
+        "  acceptedLocales: ['en-GB', 'fr-FR'],",
+        '};',
+        '',
+      ].join('\n')
+    );
+
+    const fragment = withWays();
+
+    expect(fragment.i18n).toEqual({
+      locales: ['en-GB', 'fr-FR'],
+      defaultLocale: 'en-GB',
+      domains: undefined,
+      localeDetection: false,
     });
-
-    const response = await ways.waysMiddleware({
-      headers: new Headers({
-        host: '18ways.com',
-        'x-forwarded-proto': 'https',
-      }),
-      cookies: {
-        get: () => undefined,
-      },
-      nextUrl: {
-        pathname: '/ja-JP',
-        origin: 'https://18ways.com',
-        clone: () => new URL('https://18ways.com/ja-JP'),
-      },
-    } as any);
-
-    expect(response.headers.get('x-middleware-rewrite')).toBe('https://18ways.com/');
-    expect(response.headers.get('location')).toBeNull();
+    expect(typeof fragment.webpack).toBe('function');
+    expect(fragment.turbopack?.resolveAlias?.['@18ways/next/internal-config']).toContain(
+      '18ways.config.ts'
+    );
   });
 });

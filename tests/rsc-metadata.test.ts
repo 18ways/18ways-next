@@ -72,4 +72,32 @@ describe('rsc metadata generation', () => {
       },
     });
   });
+
+  it('switches metadata origins when locale domains are configured', async () => {
+    const metadata = await generateWaysMetadata({
+      apiKey: 'test-api-key',
+      baseLocale: 'en-GB',
+      pathRouting: PATH_ROUTING,
+      domains: [
+        {
+          domain: '18ways.com',
+          defaultLocale: 'en-GB',
+        },
+        {
+          domain: '18ways.jp',
+          defaultLocale: 'ja-JP',
+          locales: ['ja-JP'],
+        },
+      ],
+    });
+
+    expect(metadata.alternates).toEqual({
+      canonical: 'https://18ways.jp/ja-JP/docs',
+      languages: {
+        'en-GB': 'https://18ways.com/en-GB/docs',
+        'ja-JP': 'https://18ways.jp/ja-JP/docs',
+        'x-default': 'https://18ways.com/en-GB/docs',
+      },
+    });
+  });
 });

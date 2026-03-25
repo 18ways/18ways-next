@@ -6,11 +6,13 @@ import { consumeHandledClientLocaleSync } from '@18ways/core/client-locale-coord
 import { useAcceptedLocales, useCurrentLocale, useSetCurrentLocale } from '@18ways/react';
 import {
   WaysPathRoutingConfig,
+  extractRecognizedLocalePrefix,
   normalizePathname,
   recognizeLocale,
 } from '@18ways/core/i18n-shared';
 import { createNextLocaleEngine, type NextLocaleDriverContext } from './next-locale-drivers';
 import {
+  useLocaleRuntimeDomains,
   useLocaleRuntimePathRouting,
   useLocaleRuntimePersistLocaleCookie,
 } from './next-locale-runtime';
@@ -107,6 +109,7 @@ export const LocalePathSync = ({ pathRouting }: { pathRouting?: WaysPathRoutingC
   const setCurrentLocale = useSetCurrentLocale();
   const router = useRouter();
   const runtimePathRouting = useLocaleRuntimePathRouting();
+  const runtimeDomains = useLocaleRuntimeDomains();
   const runtimePersistLocaleCookie = useLocaleRuntimePersistLocaleCookie();
   const effectivePathRouting = pathRouting || runtimePathRouting;
 
@@ -123,7 +126,13 @@ export const LocalePathSync = ({ pathRouting }: { pathRouting?: WaysPathRoutingC
   const replacePathname = (nextPathname: string) => {
     const search = window.location.search || '';
     const hash = window.location.hash || '';
-    navigateClientLocaleHref(router, `${nextPathname}${search}${hash}`);
+    const nextPathLocale =
+      extractRecognizedLocalePrefix(normalizePathname(nextPathname)).locale || localeRef.current;
+    navigateClientLocaleHref(router, `${nextPathname}${search}${hash}`, {
+      locale: nextPathLocale,
+      domains: runtimeDomains,
+      replace: true,
+    });
   };
 
   useEffect(() => {
@@ -256,7 +265,7 @@ export const LocalePathSync = ({ pathRouting }: { pathRouting?: WaysPathRoutingC
       cancelled = true;
       cleanup?.();
     };
-  }, [effectivePathRouting, router, runtimePersistLocaleCookie, setCurrentLocale]);
+  }, [effectivePathRouting, router, runtimeDomains, runtimePersistLocaleCookie, setCurrentLocale]);
 
   return null;
 };

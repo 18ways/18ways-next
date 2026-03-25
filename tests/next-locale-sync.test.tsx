@@ -57,6 +57,7 @@ describe('LocalePathSync', () => {
     await waitFor(() => {
       expect(setCurrentLocale).toHaveBeenCalledWith('fr-FR');
       expect(document.cookie).toContain('18ways_locale=fr-FR');
+      expect(router.push).not.toHaveBeenCalled();
       expect(router.replace).not.toHaveBeenCalled();
     });
   });
@@ -81,6 +82,7 @@ describe('LocalePathSync', () => {
       expect(router.replace).toHaveBeenCalledWith('/es-ES/docs', { scroll: false });
       expect(document.cookie).toContain('18ways_locale=es-ES');
       expect(setCurrentLocale).toHaveBeenCalledWith('es-ES');
+      expect(router.push).not.toHaveBeenCalled();
     });
   });
 
@@ -93,6 +95,7 @@ describe('LocalePathSync', () => {
     const view = render(<LocalePathSync pathRouting={PATH_ROUTING} />);
 
     await waitFor(() => {
+      expect(router.push).not.toHaveBeenCalled();
       expect(router.replace).not.toHaveBeenCalled();
     });
 
@@ -106,6 +109,7 @@ describe('LocalePathSync', () => {
       expect(router.replace).toHaveBeenCalledWith('/ja-JP', { scroll: false });
       expect(document.cookie).toContain('18ways_locale=ja-JP');
       expect(setCurrentLocale).toHaveBeenCalledWith('ja-JP');
+      expect(router.push).not.toHaveBeenCalled();
     });
   });
 
@@ -122,6 +126,7 @@ describe('LocalePathSync', () => {
     await waitFor(() => {
       expect(setCurrentLocale).toHaveBeenCalledWith('fr-FR');
       expect(document.cookie).not.toContain('18ways_locale=fr-FR');
+      expect(router.push).not.toHaveBeenCalled();
       expect(router.replace).not.toHaveBeenCalled();
     });
   });

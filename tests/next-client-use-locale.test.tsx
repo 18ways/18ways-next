@@ -104,8 +104,6 @@ describe('useLocale', () => {
     render(<LocaleChanger pathRouting={PATH_ROUTING} />);
     fireEvent.click(screen.getByRole('button', { name: 'Switch' }));
 
-    expect(window.location.pathname).toBe('/es-ES/docs');
-    expect(window.location.search).toBe('?foo=1');
     expect(document.cookie).toContain('18ways_locale=es-ES');
     await waitFor(() => {
       expect(router.replace).toHaveBeenCalledWith('/es-ES/docs?foo=1', { scroll: false });
@@ -131,7 +129,6 @@ describe('useLocale', () => {
 
     await waitFor(() => {
       expect(router.replace).toHaveBeenCalledWith('/ja-JP?foo=1', { scroll: false });
-      expect(window.location.pathname).toBe('/ja-JP');
     });
   });
 

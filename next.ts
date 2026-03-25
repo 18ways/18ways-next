@@ -1,40 +1,26 @@
 import React from 'react';
-import { NextRequest, NextResponse } from 'next/server';
 import {
   Ways as ServerWays,
   generateWaysMetadata as generateWaysMetadataBase,
   getWaysHtmlAttrs as getWaysHtmlAttrsBase,
+  WAYS_LOCALE_COOKIE_NAME,
 } from './rsc';
 import type { WaysProps, WaysRootProps } from '@18ways/react';
-import {
-  isAutoExcludedPathRoutingFilePath,
-  SUPPORTED_LOCALES,
-  WAYS_LOCALE_COOKIE_NAME,
-  WaysPathRoutingConfig,
-  normalizePathname,
-  recognizeLocale,
-} from '@18ways/core/i18n-shared';
-import { LocaleSyncMode } from '@18ways/core/locale-engine';
-import {
-  createNextLocaleEngine,
-  type NextLocaleCookieWriteOptions,
-  type NextLocaleDriverContext,
-  type PathLocaleResolution,
-} from './next-locale-drivers';
+import { recognizeLocale } from '@18ways/core/i18n-shared';
 import { cloneDeepValue, deepMerged } from '@18ways/core/object-utils';
 import {
   _composeRequestInitDecorators,
-  fetchAcceptedLocales,
   resolveAcceptedLocales,
   resolveOrigin,
 } from '@18ways/core/common';
 import { createNextRequestInitDecorator } from './next-request-init';
-import {
-  WAYS_LOCALE_HEADER_NAME,
-  WAYS_LOCALIZED_PATHNAME_HEADER_NAME,
-  WAYS_PERSIST_LOCALE_COOKIE_HEADER_NAME,
-  WAYS_PATHNAME_HEADER_NAME,
-} from './next-shared';
+import type { WaysDomainConfig } from './next-domains';
+import type {
+  WaysMaybePromise,
+  WaysRouteParams,
+  WaysServerRouteContext,
+} from './next-route-params';
+import type { WaysConfig } from './ways-config';
 
 export {
   generateWaysMetadataBase as generateWaysMetadata,
@@ -42,74 +28,35 @@ export {
   WAYS_LOCALE_COOKIE_NAME,
 };
 export type { WaysProps, WaysRootProps };
-
-export type WaysPersistLocaleCookiePolicy = boolean | ((request: NextRequest) => boolean);
-
-export type WaysNextInitOptions = Omit<
-  WaysRootProps,
-  'children' | 'context' | 'persistLocaleCookie'
-> & {
-  pathRouting?: WaysPathRoutingConfig;
-  persistLocaleCookie?: WaysPersistLocaleCookiePolicy;
-};
+export type { WaysDomainConfig } from './next-domains';
+export type { WaysRouteParams, WaysServerRouteContext } from './next-route-params';
 
 export type WaysRootComponentProps = {
   children: React.ReactNode;
+  params?: WaysMaybePromise<WaysRouteParams>;
 };
+
+export type WaysLocaleOptions = WaysServerRouteContext & {
+  locale?: string;
+};
+
+export type WaysHtmlAttrsOptions = WaysLocaleOptions;
+
+export type WaysMetadataOptions = WaysLocaleOptions;
 
 export type WaysMetadataTranslator = (text: string) => string;
 export type WaysMetadataFactory = (
   t: WaysMetadataTranslator
 ) => Record<string, any> | Promise<Record<string, any>>;
 export type WaysMetadataInput = Record<string, any> | WaysMetadataFactory;
-export type WaysApplyContext = {
-  request: NextRequest;
-  action: WaysMiddlewareResolution['action'];
-  locale: string;
-  unlocalizedPathname: string;
-  localizedPathname: string;
-  requestHeaders: Headers;
-  rewritePathname?: string;
-  redirectPathname?: string;
-};
 
-export type WaysRequestHeadersTransform = (
-  context: WaysApplyContext
-) => Headers | void | Promise<Headers | void>;
-
-export type WaysResponseTransform = (
-  response: NextResponse,
-  context: WaysApplyContext
-) => NextResponse | void | Promise<NextResponse | void>;
-
-type WaysApplyTransforms = {
-  transformRequestHeaders?: WaysRequestHeadersTransform;
-  transformResponse?: WaysResponseTransform;
-};
-
-export type WaysInitApplyOptions = WaysApplyTransforms & {
-  syncMode?: LocaleSyncMode;
-};
-
-export type WaysNextInitResult = {
+export type WaysRuntime = {
   WaysRoot: (props: WaysRootComponentProps) => Promise<React.JSX.Element>;
-  htmlAttrs: () => Promise<Record<string, string>>;
+  htmlAttrs: (options?: WaysHtmlAttrsOptions) => Promise<Record<string, string>>;
   generateWaysMetadata: (
     metadata?: WaysMetadataInput,
-    options?: { origin?: string }
+    options?: WaysMetadataOptions
   ) => Promise<Record<string, any>>;
-  waysMiddleware: (request: NextRequest, options?: WaysInitApplyOptions) => Promise<NextResponse>;
-};
-
-const resolvePersistLocaleCookiePolicy = (
-  policy: WaysPersistLocaleCookiePolicy | undefined,
-  request: NextRequest
-): boolean | undefined => {
-  if (typeof policy === 'function') {
-    return policy(request);
-  }
-
-  return policy;
 };
 
 const resolveExplicitAcceptedLocales = (
@@ -180,7 +127,7 @@ const buildMetadataTranslationMap = async (params: {
   entries: string[];
   targetLocale: string;
   baseLocale: string;
-  initOptions: WaysNextInitOptions;
+  initOptions: WaysConfig;
 }): Promise<Map<string, string>> => {
   const { entries, targetLocale, baseLocale, initOptions } = params;
 
@@ -258,7 +205,7 @@ const translateMetadataObject = async (params: {
   metadata: Record<string, any>;
   targetLocale: string;
   baseLocale: string;
-  initOptions: WaysNextInitOptions;
+  initOptions: WaysConfig;
 }): Promise<Record<string, any>> => {
   const { metadata, targetLocale, baseLocale, initOptions } = params;
 
@@ -294,7 +241,7 @@ const resolveMetadataInput = async (params: {
   metadata: WaysMetadataInput;
   targetLocale: string;
   baseLocale: string;
-  initOptions: WaysNextInitOptions;
+  initOptions: WaysConfig;
 }): Promise<Record<string, any>> => {
   const { metadata, targetLocale, baseLocale, initOptions } = params;
 
@@ -329,19 +276,18 @@ const resolveMetadataInput = async (params: {
   return metadata((text) => translationMap.get(text) ?? text);
 };
 
-export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
-  const { pathRouting, ...waysRootOptions } = options;
+export const createWaysRuntime = (options: WaysConfig): WaysRuntime => {
+  const { pathRouting, domains, localeParamName, router, routeManifest, ...waysRootOptions } =
+    options;
+  const resolvedRouter =
+    router === 'pages' || router === 'path' ? 'path' : router === 'none' ? 'none' : 'app';
+  const resolvedPathRouting = resolvedRouter === 'app' ? pathRouting : undefined;
+  const resolvedRouteManifest = resolvedRouter === 'app' ? routeManifest : undefined;
   const resolvedBaseLocale = recognizeLocale(waysRootOptions.baseLocale) || 'en-GB';
   const explicitAcceptedLocales = resolveExplicitAcceptedLocales(
     resolvedBaseLocale,
     waysRootOptions.acceptedLocales
   );
-  const defaultMiddlewareOptions: InternalWaysMiddlewareOptions = {
-    baseLocale: resolvedBaseLocale,
-    pathRouting,
-    acceptedLocales: explicitAcceptedLocales,
-    supportedLocales: explicitAcceptedLocales,
-  };
   const rootProps = {
     ...waysRootOptions,
     acceptedLocales: explicitAcceptedLocales,
@@ -349,8 +295,10 @@ export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
   const localeProps: Partial<
     Pick<WaysRootProps, 'locale' | 'baseLocale' | 'apiKey' | '_apiUrl' | 'acceptedLocales'>
   > & {
-    pathRouting?: WaysPathRoutingConfig;
+    pathRouting?: WaysConfig['pathRouting'];
     _requestInitDecorator?: WaysRootProps['_requestInitDecorator'];
+    domains?: WaysDomainConfig[];
+    localeParamName?: string;
   } = {
     locale: waysRootOptions.locale,
     baseLocale: waysRootOptions.baseLocale,
@@ -358,33 +306,48 @@ export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
     _apiUrl: waysRootOptions._apiUrl,
     acceptedLocales: explicitAcceptedLocales,
     _requestInitDecorator: waysRootOptions._requestInitDecorator,
-    pathRouting,
+    pathRouting: resolvedPathRouting,
+    domains,
+    localeParamName,
   };
-  const WaysRoot = async ({ children }: WaysRootComponentProps): Promise<React.JSX.Element> => {
+
+  const WaysRoot = async ({
+    children,
+    params,
+  }: WaysRootComponentProps): Promise<React.JSX.Element> => {
     const rootPersistLocaleCookie =
       typeof waysRootOptions.persistLocaleCookie === 'boolean'
         ? waysRootOptions.persistLocaleCookie
         : undefined;
 
-    return Ways({
+    return ServerWays({
       ...rootProps,
-      pathRouting,
+      router: resolvedRouter,
+      pathRouting: resolvedPathRouting,
       children,
       persistLocaleCookie: rootPersistLocaleCookie,
       _persistLocaleCookiePolicy: waysRootOptions.persistLocaleCookie,
+      domains,
+      localeParamName,
+      routeManifest: resolvedRouteManifest,
+      params,
     });
   };
 
-  const htmlAttrs = async (): Promise<Record<string, string>> => {
-    return getWaysHtmlAttrsBase(localeProps);
+  const htmlAttrs = async (htmlOptions?: WaysHtmlAttrsOptions): Promise<Record<string, string>> => {
+    return getWaysHtmlAttrsBase({
+      ...localeProps,
+      ...htmlOptions,
+    });
   };
 
   const generateWaysMetadata = async (
     metadata?: WaysMetadataInput,
-    metadataOptions?: { origin?: string }
+    metadataOptions?: WaysMetadataOptions
   ): Promise<Record<string, any>> => {
     const waysMetadata = await generateWaysMetadataBase({
       ...localeProps,
+      ...metadataOptions,
       origin: metadataOptions?.origin,
     });
 
@@ -396,10 +359,12 @@ export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
       (waysMetadata?.other && typeof waysMetadata.other['18ways_locale'] === 'string'
         ? waysMetadata.other['18ways_locale']
         : undefined) ||
+      metadataOptions?.locale ||
       localeProps.locale ||
       localeProps.baseLocale ||
       'en-GB';
-    const resolvedBaseLocale = localeProps.baseLocale || localeProps.locale || resolvedLocale;
+    const resolvedMetadataBaseLocale =
+      localeProps.baseLocale || metadataOptions?.locale || localeProps.locale || resolvedLocale;
     const metadataBaseValue = waysMetadata?.metadataBase;
     const metadataBaseOrigin =
       metadataBaseValue instanceof URL
@@ -420,7 +385,7 @@ export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
     const translatedMetadata = await resolveMetadataInput({
       metadata,
       targetLocale: resolvedLocale,
-      baseLocale: resolvedBaseLocale,
+      baseLocale: resolvedMetadataBaseLocale,
       initOptions: {
         ...waysRootOptions,
         requestOrigin,
@@ -430,426 +395,9 @@ export const init = (options: WaysNextInitOptions): WaysNextInitResult => {
     return deepMerged(translatedMetadata, waysMetadata);
   };
 
-  const waysMiddlewareFromInit = async (
-    request: NextRequest,
-    applyOptions: WaysInitApplyOptions = {}
-  ) => {
-    const resolvedBaseLocale = recognizeLocale(waysRootOptions.baseLocale) || 'en-GB';
-    const acceptedLocales =
-      explicitAcceptedLocales ||
-      (waysRootOptions.apiKey
-        ? resolveAcceptedLocales(
-            resolvedBaseLocale,
-            await fetchAcceptedLocales(resolvedBaseLocale, {
-              apiUrl: waysRootOptions._apiUrl,
-              origin: resolveOrigin({
-                host: request.headers.get('x-forwarded-host') || request.headers.get('host'),
-                forwardedProto: request.headers.get('x-forwarded-proto'),
-              }),
-              apiKey: waysRootOptions.apiKey,
-              _requestInitDecorator: _composeRequestInitDecorators(
-                createNextRequestInitDecorator(),
-                waysRootOptions._requestInitDecorator
-              ),
-            })
-          )
-        : resolveAcceptedLocales(resolvedBaseLocale, SUPPORTED_LOCALES));
-
-    const resolution = await resolveWaysMiddlewareInternal(request, {
-      ...defaultMiddlewareOptions,
-      acceptedLocales,
-      supportedLocales: acceptedLocales,
-      syncMode: applyOptions.syncMode,
-      persistLocaleCookie: resolvePersistLocaleCookiePolicy(
-        waysRootOptions.persistLocaleCookie,
-        request
-      ),
-    });
-    return finalizeWaysMiddlewareResponse(request, resolution, applyOptions);
-  };
-
   return {
     WaysRoot,
     htmlAttrs,
     generateWaysMetadata,
-    waysMiddleware: waysMiddlewareFromInit,
   };
-};
-
-type WaysNextProps = WaysProps & {
-  pathRouting?: WaysPathRoutingConfig;
-  _persistLocaleCookiePolicy?: WaysPersistLocaleCookiePolicy;
-};
-
-export function Ways(props: WaysNextProps): React.JSX.Element {
-  if ('apiKey' in props) {
-    return React.createElement(ServerWays, props, props.children);
-  }
-
-  return React.createElement(ServerWays, props, props.children);
-}
-
-type WaysCookieUpdate = {
-  name: string;
-  value: string;
-  options: {
-    maxAge?: number;
-    sameSite: 'lax';
-    secure: boolean;
-    path: string;
-  };
-};
-
-export type WaysMiddlewareOptions = {
-  baseLocale?: string;
-  pathRouting?: WaysPathRoutingConfig;
-  syncMode?: LocaleSyncMode;
-  acceptedLocales?: string[];
-  supportedLocales?: string[];
-};
-
-export type WaysApplyOptions = WaysMiddlewareOptions & WaysApplyTransforms;
-type InternalWaysMiddlewareOptions = WaysMiddlewareOptions & {
-  persistLocaleCookie?: boolean;
-};
-
-export type WaysMiddlewareResolution =
-  | {
-      action: 'redirect';
-      locale: string;
-      redirectPathname: string;
-      unlocalizedPathname: string;
-      localizedPathname: string;
-      requestHeaders: Headers;
-      cookieUpdates: WaysCookieUpdate[];
-    }
-  | {
-      action: 'rewrite';
-      locale: string;
-      rewritePathname: string;
-      unlocalizedPathname: string;
-      localizedPathname: string;
-      requestHeaders: Headers;
-      cookieUpdates: WaysCookieUpdate[];
-    }
-  | {
-      action: 'continue';
-      locale: string;
-      unlocalizedPathname: string;
-      localizedPathname: string;
-      requestHeaders: Headers;
-      cookieUpdates: WaysCookieUpdate[];
-    };
-
-type WaysMiddlewareState = {
-  secureCookies: boolean;
-  cookieUpdates: Map<string, WaysCookieUpdate>;
-  unlocalizedPathname: string;
-  localizedPathname: string;
-  rewritePathname?: string;
-  redirectPathname?: string;
-};
-
-type WaysMiddlewareContext = NextLocaleDriverContext;
-
-export const createWaysMiddlewareOptions = (input: {
-  baseLocale?: string;
-  pathRouting?: WaysPathRoutingConfig;
-  syncMode?: LocaleSyncMode;
-  acceptedLocales?: string[];
-  supportedLocales?: string[];
-}): WaysMiddlewareOptions => {
-  const resolvedBaseLocale = recognizeLocale(input.baseLocale) || 'en-GB';
-  const explicitAcceptedLocales = resolveExplicitAcceptedLocales(
-    resolvedBaseLocale,
-    input.acceptedLocales
-  );
-  const explicitSupportedLocales = resolveExplicitAcceptedLocales(
-    resolvedBaseLocale,
-    input.supportedLocales
-  );
-
-  return {
-    baseLocale: input.baseLocale,
-    pathRouting: input.pathRouting,
-    syncMode: input.syncMode,
-    acceptedLocales: explicitAcceptedLocales,
-    supportedLocales: explicitSupportedLocales,
-  };
-};
-
-const setCookieUpdate = (state: WaysMiddlewareState, update: WaysCookieUpdate): void => {
-  state.cookieUpdates.set(update.name, update);
-};
-
-const writeCookieUpdate = (
-  state: WaysMiddlewareState,
-  cookieName: string,
-  value: string,
-  options?: NextLocaleCookieWriteOptions
-): void => {
-  setCookieUpdate(state, {
-    name: cookieName,
-    value,
-    options: {
-      maxAge: options?.maxAge,
-      sameSite: options?.sameSite || 'lax',
-      secure: typeof options?.secure === 'boolean' ? options.secure : state.secureCookies,
-      path: options?.path || '/',
-    },
-  });
-};
-
-const applyPathLocaleResolution = (
-  state: WaysMiddlewareState,
-  resolution: PathLocaleResolution
-): void => {
-  state.unlocalizedPathname = normalizePathname(resolution.unlocalizedPathname);
-  state.localizedPathname = normalizePathname(resolution.localizedPathname);
-  state.rewritePathname = resolution.rewritePathname
-    ? normalizePathname(resolution.rewritePathname)
-    : undefined;
-  state.redirectPathname = resolution.redirectPathname
-    ? normalizePathname(resolution.redirectPathname)
-    : undefined;
-};
-
-const createWaysMiddlewareContext = (input: {
-  request: NextRequest;
-  baseLocale: string;
-  pathRouting?: WaysPathRoutingConfig;
-  supportedLocales?: string[];
-  acceptedLocales?: string[];
-  persistLocaleCookie?: boolean;
-}): {
-  context: WaysMiddlewareContext;
-  state: WaysMiddlewareState;
-} => {
-  const normalizedPathname = normalizePathname(input.request.nextUrl.pathname);
-  const state: WaysMiddlewareState = {
-    secureCookies: process.env.NODE_ENV === 'production',
-    cookieUpdates: new Map(),
-    unlocalizedPathname: normalizedPathname,
-    localizedPathname: normalizedPathname,
-  };
-
-  const context: WaysMiddlewareContext = {
-    pathname: normalizedPathname,
-    baseLocale: input.baseLocale,
-    supportedLocales: input.supportedLocales,
-    acceptedLocales: input.acceptedLocales,
-    pathRouting: input.pathRouting,
-    persistLocaleCookie: input.persistLocaleCookie,
-    readCookie: (cookieName) => input.request.cookies.get(cookieName)?.value || null,
-    writeCookie: (cookieName, locale, cookieOptions) => {
-      writeCookieUpdate(state, cookieName, locale, cookieOptions);
-    },
-    acceptLanguageHeader: input.request.headers.get('accept-language'),
-    onPathLocaleResolution: (resolution) => {
-      applyPathLocaleResolution(state, resolution);
-    },
-  };
-
-  return { context, state };
-};
-
-const buildRequestHeaders = (
-  request: NextRequest,
-  locale: string,
-  unlocalizedPathname: string,
-  localizedPathname: string,
-  persistLocaleCookie: boolean
-): Headers => {
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set(WAYS_LOCALE_HEADER_NAME, locale);
-  requestHeaders.set(WAYS_PATHNAME_HEADER_NAME, normalizePathname(unlocalizedPathname));
-  requestHeaders.set(WAYS_LOCALIZED_PATHNAME_HEADER_NAME, normalizePathname(localizedPathname));
-  requestHeaders.set(
-    WAYS_PERSIST_LOCALE_COOKIE_HEADER_NAME,
-    persistLocaleCookie ? 'true' : 'false'
-  );
-  return requestHeaders;
-};
-
-const resolveWaysMiddlewareInternal = async (
-  request: NextRequest,
-  options?: InternalWaysMiddlewareOptions
-): Promise<WaysMiddlewareResolution> => {
-  const baseLocale = recognizeLocale(options?.baseLocale) || 'en-GB';
-  const normalizedPathname = normalizePathname(request.nextUrl.pathname);
-
-  if (isAutoExcludedPathRoutingFilePath(normalizedPathname)) {
-    return {
-      action: 'continue',
-      locale: baseLocale,
-      unlocalizedPathname: normalizedPathname,
-      localizedPathname: normalizedPathname,
-      requestHeaders: new Headers(request.headers),
-      cookieUpdates: [],
-    };
-  }
-
-  const pathRouting = options?.pathRouting;
-  const hasAcceptedLocales =
-    !!options && Object.prototype.hasOwnProperty.call(options, 'acceptedLocales');
-  const hasSupportedLocales =
-    !!options && Object.prototype.hasOwnProperty.call(options, 'supportedLocales');
-  const acceptedLocales = hasAcceptedLocales
-    ? resolveAcceptedLocales(baseLocale, options?.acceptedLocales)
-    : undefined;
-  const supportedLocales = hasSupportedLocales
-    ? resolveAcceptedLocales(baseLocale, options?.supportedLocales)
-    : acceptedLocales;
-  const persistLocaleCookie = options?.persistLocaleCookie !== false;
-  const { context, state } = createWaysMiddlewareContext({
-    request,
-    baseLocale,
-    pathRouting,
-    supportedLocales,
-    acceptedLocales,
-    persistLocaleCookie,
-  });
-  const engine = createNextLocaleEngine<WaysMiddlewareContext>({
-    baseLocale,
-    acceptedLocales,
-  });
-
-  const resolution = await engine.resolveAndSync(context, {
-    mode: options?.syncMode || 'all',
-  });
-
-  const requestHeaders = buildRequestHeaders(
-    request,
-    resolution.locale,
-    state.unlocalizedPathname,
-    state.localizedPathname,
-    persistLocaleCookie
-  );
-  const cookieUpdates = Array.from(state.cookieUpdates.values());
-
-  if (state.redirectPathname) {
-    return {
-      action: 'redirect',
-      locale: resolution.locale,
-      redirectPathname: state.redirectPathname,
-      unlocalizedPathname: state.unlocalizedPathname,
-      localizedPathname: state.localizedPathname,
-      requestHeaders,
-      cookieUpdates,
-    };
-  }
-
-  if (state.rewritePathname) {
-    return {
-      action: 'rewrite',
-      locale: resolution.locale,
-      rewritePathname: state.rewritePathname,
-      unlocalizedPathname: state.unlocalizedPathname,
-      localizedPathname: state.localizedPathname,
-      requestHeaders,
-      cookieUpdates,
-    };
-  }
-
-  return {
-    action: 'continue',
-    locale: resolution.locale,
-    unlocalizedPathname: state.unlocalizedPathname,
-    localizedPathname: state.localizedPathname,
-    requestHeaders,
-    cookieUpdates,
-  };
-};
-
-export const resolveWaysMiddleware = async (
-  request: NextRequest,
-  options?: WaysMiddlewareOptions
-): Promise<WaysMiddlewareResolution> => {
-  return resolveWaysMiddlewareInternal(request, options);
-};
-
-const applyLocaleCookies = (response: NextResponse, cookieUpdates: WaysCookieUpdate[]) => {
-  cookieUpdates.forEach((cookie) => {
-    response.cookies.set(cookie.name, cookie.value, cookie.options);
-  });
-};
-
-const createWaysApplyContext = (
-  request: NextRequest,
-  resolution: WaysMiddlewareResolution
-): WaysApplyContext => {
-  return {
-    request,
-    action: resolution.action,
-    locale: resolution.locale,
-    unlocalizedPathname: resolution.unlocalizedPathname,
-    localizedPathname: resolution.localizedPathname,
-    requestHeaders: new Headers(resolution.requestHeaders),
-    rewritePathname: resolution.action === 'rewrite' ? resolution.rewritePathname : undefined,
-    redirectPathname: resolution.action === 'redirect' ? resolution.redirectPathname : undefined,
-  };
-};
-
-const createWaysBaseResponse = (request: NextRequest, context: WaysApplyContext): NextResponse => {
-  if (context.action === 'redirect' && context.redirectPathname) {
-    const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = context.redirectPathname;
-    return NextResponse.redirect(redirectUrl);
-  }
-
-  if (context.action === 'rewrite' && context.rewritePathname) {
-    const rewriteUrl = request.nextUrl.clone();
-    rewriteUrl.pathname = context.rewritePathname;
-    return NextResponse.rewrite(rewriteUrl, {
-      request: {
-        headers: context.requestHeaders,
-      },
-    });
-  }
-
-  return NextResponse.next({
-    request: {
-      headers: context.requestHeaders,
-    },
-  });
-};
-
-const finalizeWaysMiddlewareResponse = async (
-  request: NextRequest,
-  resolution: WaysMiddlewareResolution,
-  transforms: WaysApplyTransforms = {}
-): Promise<NextResponse> => {
-  const context = createWaysApplyContext(request, resolution);
-  const transformedRequestHeaders = await transforms.transformRequestHeaders?.(context);
-  if (transformedRequestHeaders) {
-    context.requestHeaders = transformedRequestHeaders;
-  }
-
-  const response = createWaysBaseResponse(request, context);
-  applyLocaleCookies(response, resolution.cookieUpdates);
-
-  const transformedResponse = await transforms.transformResponse?.(response, context);
-  return transformedResponse || response;
-};
-
-export const waysMiddleware = async (
-  request: NextRequest,
-  options: WaysApplyOptions = {}
-): Promise<NextResponse> => {
-  const { transformRequestHeaders, transformResponse, ...middlewareOptions } = options;
-  const resolution = await resolveWaysMiddlewareInternal(request, middlewareOptions);
-  return finalizeWaysMiddlewareResponse(request, resolution, {
-    transformRequestHeaders,
-    transformResponse,
-  });
-};
-
-export async function middleware(request: NextRequest): Promise<NextResponse> {
-  return waysMiddleware(request);
-}
-
-export const config = {
-  matcher: [
-    '/((?!_next|robots\\.txt$|sitemap\\.xml$|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
-  ],
 };

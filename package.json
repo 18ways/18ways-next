@@ -10,9 +10,22 @@
       "types": "./client.ts",
       "import": "./client.ts"
     },
+    "./config": {
+      "types": "./config.ts",
+      "import": "./config.ts",
+      "require": "./config.cjs"
+    },
+    "./internal-config": {
+      "types": "./internal-config.ts",
+      "import": "./internal-config.ts"
+    },
     "./next-client": {
       "types": "./next-client.ts",
       "import": "./next-client.ts"
+    },
+    "./proxy": {
+      "types": "./proxy.ts",
+      "import": "./proxy.ts"
     },
     "./server": {
       "types": "./server.ts",
@@ -24,6 +37,7 @@
     }
   },
   "files": [
+    "*.cjs",
     "*.ts",
     "*.tsx",
     "global.d.ts"
@@ -37,7 +51,8 @@
   },
   "dependencies": {
     "@18ways/core": "*",
-    "@18ways/react": "*"
+    "@18ways/react": "*",
+    "jiti": "^1.21.7"
   },
   "peerDependencies": {
     "next": ">=14",

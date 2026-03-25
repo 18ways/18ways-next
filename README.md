@@ -16,16 +16,30 @@ npm install @18ways/next @18ways/react
 
 Use this example exactly as written to test the library locally. `pk_dummy_demo_token` enables the built-in demo mode with the `Caesar Shift` language.
 
+```js
+// 18ways.config.ts
+import type { WaysConfig } from '@18ways/next/config';
+
+export default {
+  apiKey: 'pk_dummy_demo_token',
+  baseLocale: 'en-GB',
+  router: 'app', // 'app', 'path', or 'none'
+} satisfies WaysConfig;
+```
+
+```js
+// next.config.js
+const { withWays } = require('@18ways/next/config');
+
+module.exports = withWays({
+  // the rest of your next config
+});
+```
+
 ```tsx
 // app/layout.tsx
 import type { ReactNode } from 'react';
-import { init as initWays } from '@18ways/next/server';
-
-// This should be called in a server component.
-const { WaysRoot } = initWays({
-  apiKey: 'pk_dummy_demo_token',
-  baseLocale: 'en-GB',
-});
+import { WaysRoot } from '@18ways/next/server';
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
@@ -60,6 +74,9 @@ export default function Page() {
 }
 ```
 
-For a lightweight client-only demo app, see `examples/basic/`. The example keeps a note showing where `initWays(...)` should be called in a server component.
+For a lightweight client-only demo app, see `examples/basic/`.
+
+For App Router locale routing, put public pages under `app/[lang]/...` and optionally re-export
+`default` and `config` from `@18ways/next/proxy` when you want domain canonicalization.
 
 Docs: [18ways.com/docs](https://18ways.com/docs)
