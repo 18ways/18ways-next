@@ -1,0 +1,24 @@
+{
+  "name": "@18ways/next-legacy-i18next-example",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@18ways/next": "1.0.1",
+    "@18ways/react": "1.0.1",
+    "i18next": "^25.5.2",
+    "next": "15.5.9",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-i18next": "^15.7.3"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.5",
+    "typescript": "^5.6.2"
+  },
+  "packageManager": "bun@1.3.8"
+}

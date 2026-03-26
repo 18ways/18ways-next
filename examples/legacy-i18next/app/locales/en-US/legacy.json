@@ -1,0 +1,15 @@
+{
+  "badge": "Legacy i18next shell",
+  "title": "Keep i18next in place.",
+  "body": "This app keeps the existing i18next provider and language selector, then mirrors the chosen locale into a nested 18ways surface.",
+  "selectorLabel": "Language selector owned by i18next",
+  "selectorHelp": "The selector changes i18next first. A bridge component then pushes that same locale into 18ways.",
+  "legacyStatus": "i18next locale: {{locale}}",
+  "waysStatus": "18ways locale: {{locale}}",
+  "legacyHeading": "Existing app copy",
+  "legacyParagraph": "These strings still come from the repo's old i18next resources, so the existing app can stay as it is.",
+  "legacyBulletOne": "Keep the current i18next dictionaries and hooks.",
+  "legacyBulletTwo": "Let the old selector remain the source of truth.",
+  "legacyBulletThree": "Adopt 18ways only where new UI needs it.",
+  "footerNote": "Use a real 18ways API key when you are ready to replace the demo locale with production target locales."
+}
