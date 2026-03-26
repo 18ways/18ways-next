@@ -76,7 +76,7 @@ export default function Page() {
 
 For a lightweight client-only demo app, see `examples/basic/`.
 
-For App Router locale routing, put public pages under `app/[lang]/...` and optionally re-export
-`default` and `config` from `@18ways/next/proxy` when you want domain canonicalization.
+For App Router locale routing, put public pages under `app/[lang]/...` and use
+`@18ways/next/proxy` to handle `/ -> /{locale}` plus domain canonicalization.
 
 Docs: [18ways.com/docs](https://18ways.com/docs)
