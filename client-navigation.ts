@@ -58,6 +58,7 @@ export const navigateClientLocaleHref = (
     locale: string;
     domains?: WaysDomainConfig[];
     replace?: boolean;
+    historyOnly?: boolean;
   }
 ): void => {
   if (typeof window === 'undefined') {
@@ -81,6 +82,10 @@ export const navigateClientLocaleHref = (
 
   if (options.replace) {
     updateHistoryImmediately(nextHref);
+  }
+
+  if (options.historyOnly) {
+    return;
   }
 
   startTransition(() => {

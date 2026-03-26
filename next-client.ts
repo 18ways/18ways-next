@@ -277,6 +277,7 @@ const useAppLocale = (
             locale: recognizedNextLocale,
             domains: runtimeDomains,
             replace: true,
+            historyOnly: true,
           });
         },
         onLocaleSynced: () => {

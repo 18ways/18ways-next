@@ -106,7 +106,9 @@ describe('useLocale', () => {
 
     expect(document.cookie).toContain('18ways_locale=es-ES');
     await waitFor(() => {
-      expect(router.replace).toHaveBeenCalledWith('/es-ES/docs?foo=1', { scroll: false });
+      expect(window.location.pathname).toBe('/es-ES/docs');
+      expect(window.location.search).toBe('?foo=1');
+      expect(router.replace).not.toHaveBeenCalled();
       expect(router.refresh).not.toHaveBeenCalled();
       expect(setCurrentLocale).toHaveBeenCalledWith('es-ES');
     });
@@ -128,7 +130,9 @@ describe('useLocale', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Switch' }));
 
     await waitFor(() => {
-      expect(router.replace).toHaveBeenCalledWith('/ja-JP?foo=1', { scroll: false });
+      expect(window.location.pathname).toBe('/ja-JP');
+      expect(window.location.search).toBe('?foo=1');
+      expect(router.replace).not.toHaveBeenCalled();
     });
   });
 
@@ -140,11 +144,12 @@ describe('useLocale', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Switch' }));
 
     await waitFor(() => {
-      expect(router.replace).toHaveBeenCalledTimes(1);
-      expect(router.replace).toHaveBeenCalledWith('/es-ES/docs?foo=1', { scroll: false });
+      expect(router.replace).not.toHaveBeenCalled();
       expect(setCurrentLocale).toHaveBeenCalledTimes(1);
       expect(setCurrentLocale).toHaveBeenCalledWith('es-ES');
       expect(document.cookie).toContain('18ways_locale=es-ES');
+      expect(window.location.pathname).toBe('/es-ES/docs');
+      expect(window.location.search).toBe('?foo=1');
     });
   });
 
@@ -187,9 +192,11 @@ describe('useLocale', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Switch' }));
 
     await waitFor(() => {
-      expect(router.replace).toHaveBeenCalledWith('/es-ES/docs?foo=1', { scroll: false });
+      expect(router.replace).not.toHaveBeenCalled();
       expect(setCurrentLocale).toHaveBeenCalledWith('es-ES');
       expect(document.cookie).not.toContain('18ways_locale=es-ES');
+      expect(window.location.pathname).toBe('/es-ES/docs');
+      expect(window.location.search).toBe('?foo=1');
     });
   });
 });
