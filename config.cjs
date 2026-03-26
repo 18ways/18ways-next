@@ -259,13 +259,13 @@ const INTERNAL_CONFIG_ALIAS = '@18ways/next/internal-config';
 const looksLikeWaysConfig = (value) =>
   Boolean(
     value &&
-    typeof value === 'object' &&
-    !Array.isArray(value) &&
-    ('apiKey' in value ||
-      'baseLocale' in value ||
-      'router' in value ||
-      'localeParamName' in value ||
-      'acceptedLocales' in value)
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      ('apiKey' in value ||
+        'baseLocale' in value ||
+        'router' in value ||
+        'localeParamName' in value ||
+        'acceptedLocales' in value)
   );
 
 const withWays = (nextConfigOrOptions = {}, explicitOptions) => {
