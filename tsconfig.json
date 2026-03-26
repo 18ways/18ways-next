@@ -6,6 +6,7 @@
     "strict": true,
     "noEmit": true,
     "incremental": true,
+    "tsBuildInfoFile": "../../.cache/tsc/18ways-next.tsbuildinfo",
     "module": "esnext",
     "esModuleInterop": true,
     "moduleResolution": "node",

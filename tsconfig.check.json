@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "outDir": "../../.cache/tsc/18ways-next",
+    "tsBuildInfoFile": "../../.cache/tsc/18ways-next-check.tsbuildinfo"
+  },
+  "references": [
+    {
+      "path": "../18ways-core/tsconfig.check.json"
+    },
+    {
+      "path": "../18ways-react/tsconfig.check.json"
+    }
+  ]
+}
