@@ -1,8 +1,29 @@
+import path from 'path';
 import { defineConfig, defineProject } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
+const workspaceAliases = [
+  {
+    find: /^@18ways\/core$/,
+    replacement: path.resolve(__dirname, '../18ways-core/index.ts'),
+  },
+  {
+    find: /^@18ways\/core\/(.*)$/,
+    replacement: path.resolve(__dirname, '../18ways-core/$1'),
+  },
+  {
+    find: /^@18ways\/react$/,
+    replacement: path.resolve(__dirname, '../18ways-react/index.tsx'),
+  },
+  {
+    find: /^@18ways\/react\/(.*)$/,
+    replacement: path.resolve(__dirname, '../18ways-react/$1'),
+  },
+] as const;
+
 const resolve = {
   dedupe: ['react', 'react-dom'],
+  alias: [...workspaceAliases],
 };
 
 const coverage = {

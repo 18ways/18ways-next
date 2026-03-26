@@ -25,10 +25,13 @@
   "exclude": [
     "node_modules",
     "dist",
+    "dist-types",
     "tests",
     "e2e",
+    "examples",
     "**/*.test.ts",
     "**/*.test.tsx",
+    "bun-build.ts",
     "vitest.config.ts",
     "vitest-setup.ts"
   ]

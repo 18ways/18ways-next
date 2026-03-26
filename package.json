@@ -2,48 +2,55 @@
   "name": "@18ways/next",
   "version": "1.0.1",
   "type": "module",
-  "main": "./next.ts",
-  "module": "./next.ts",
-  "types": "./next.ts",
+  "main": "./dist/next.js",
+  "module": "./dist/next.js",
+  "types": "./dist-types/next.d.ts",
   "exports": {
     "./client": {
-      "types": "./client.ts",
-      "import": "./client.ts"
+      "types": "./dist-types/client.d.ts",
+      "import": "./dist/client.js",
+      "default": "./dist/client.js"
     },
     "./config": {
-      "types": "./config.ts",
-      "import": "./config.ts",
+      "types": "./dist-types/config.d.ts",
+      "import": "./dist/config.js",
+      "default": "./dist/config.js",
       "require": "./config.cjs"
     },
     "./internal-config": {
-      "types": "./internal-config.ts",
-      "import": "./internal-config.ts"
+      "types": "./dist-types/internal-config.d.ts",
+      "import": "./dist/internal-config.js",
+      "default": "./dist/internal-config.js"
     },
     "./next-client": {
-      "types": "./next-client.ts",
-      "import": "./next-client.ts"
+      "types": "./dist-types/next-client.d.ts",
+      "import": "./dist/next-client.js",
+      "default": "./dist/next-client.js"
     },
     "./proxy": {
-      "types": "./proxy.ts",
-      "import": "./proxy.ts"
+      "types": "./dist-types/proxy.d.ts",
+      "import": "./dist/proxy.js",
+      "default": "./dist/proxy.js"
     },
     "./server": {
-      "types": "./server.ts",
-      "import": "./server.ts"
+      "types": "./dist-types/server.d.ts",
+      "import": "./dist/server.js",
+      "default": "./dist/server.js"
     },
     "./rsc": {
-      "types": "./rsc.tsx",
-      "import": "./rsc.tsx"
+      "types": "./dist-types/rsc.d.ts",
+      "import": "./dist/rsc.js",
+      "default": "./dist/rsc.js"
     }
   },
   "files": [
     "*.cjs",
-    "*.ts",
-    "*.tsx",
+    "dist",
+    "dist-types",
     "global.d.ts"
   ],
   "scripts": {
-    "build": "echo '18ways-next build: source-only package'",
+    "build": "bun run bun-build.ts",
     "ts:check": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
