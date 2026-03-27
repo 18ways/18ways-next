@@ -13,9 +13,9 @@
     },
     "./config": {
       "types": "./dist-types/config.d.ts",
+      "require": "./config.cjs",
       "import": "./dist/config.js",
-      "default": "./dist/config.js",
-      "require": "./config.cjs"
+      "default": "./dist/config.js"
     },
     "./internal-config": {
       "types": "./dist-types/internal-config.d.ts",

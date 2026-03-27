@@ -3,7 +3,7 @@
 import React from 'react';
 import { Ways as ReactWays } from '@18ways/react';
 import type { WaysRootProps } from '@18ways/react';
-import type { WaysPathRoutingConfig } from '@18ways/core/i18n-shared';
+import { type WaysPathRoutingConfig } from '@18ways/core/i18n-shared';
 import { _composeRequestInitDecorators, type _RequestInitDecorator } from '@18ways/core/common';
 import { createNextRequestInitDecorator } from './next-request-init';
 import { LocalePathSync } from './next-locale-sync';

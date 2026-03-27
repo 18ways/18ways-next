@@ -1,4 +1,3 @@
-import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -7,17 +6,9 @@ import {
   type WaysPathRoutingConfig,
 } from '@18ways/core/i18n-shared';
 import { resolveAcceptedLocales } from '@18ways/core/common';
+import * as configLoader from './config-loader.cjs';
 import type { WaysDomainConfig } from './next-domains';
 import { type WaysConfig, type WaysPublicConfig, type WaysRouteManifest } from './ways-config';
-
-const requireFromModule = createRequire(import.meta.url);
-const configLoader = requireFromModule('./config-loader.cjs') as {
-  loadWaysConfigFromProjectRoot: (projectRoot: string) => {
-    config: WaysConfig;
-    configFile: string;
-    projectRoot: string;
-  };
-};
 
 type NextConfigFragment = {
   webpack?: (config: any, options: any) => any;
@@ -34,6 +25,8 @@ type NextConfigFragment = {
 };
 
 const INTERNAL_CONFIG_ALIAS = '@18ways/next/internal-config';
+const GENERATED_INTERNAL_CONFIG_DIR = '.18ways';
+const GENERATED_INTERNAL_CONFIG_FILENAME = 'internal-config.ts';
 
 const looksLikeWaysConfig = (value: unknown): value is WaysConfig => {
   return Boolean(
@@ -260,6 +253,55 @@ const buildPagesI18nConfig = (config: WaysPublicConfig): NextConfigFragment['i18
   };
 };
 
+const toRelativeImportPath = (fromDir: string, targetFile: string): string => {
+  const relativePath = path.relative(fromDir, targetFile).replace(/\\/g, '/');
+  if (!relativePath) {
+    return './';
+  }
+
+  return relativePath.startsWith('.') ? relativePath : `./${relativePath}`;
+};
+
+const buildGeneratedInternalConfigSource = (
+  relativeConfigPath: string,
+  publicConfig: WaysPublicConfig
+): string => {
+  return [
+    `import * as loadedConfigModule from ${JSON.stringify(relativeConfigPath)};`,
+    '',
+    "const rawConfig = 'default' in loadedConfigModule ? loadedConfigModule.default : loadedConfigModule;",
+    `const derivedConfig = ${JSON.stringify(publicConfig, null, 2)};`,
+    '',
+    'export const config = {',
+    '  ...rawConfig,',
+    '  ...derivedConfig,',
+    '};',
+    '',
+    'export default config;',
+    '',
+  ].join('\n');
+};
+
+const ensureGeneratedInternalConfig = (
+  projectRoot: string,
+  configFile: string,
+  publicConfig: WaysPublicConfig
+): string => {
+  const generatedDir = path.join(projectRoot, GENERATED_INTERNAL_CONFIG_DIR);
+  const generatedFile = path.join(generatedDir, GENERATED_INTERNAL_CONFIG_FILENAME);
+  const nextContents = buildGeneratedInternalConfigSource(
+    toRelativeImportPath(generatedDir, configFile),
+    publicConfig
+  );
+
+  fs.mkdirSync(generatedDir, { recursive: true });
+  if (!fs.existsSync(generatedFile) || fs.readFileSync(generatedFile, 'utf8') !== nextContents) {
+    fs.writeFileSync(generatedFile, nextContents, 'utf8');
+  }
+
+  return generatedFile;
+};
+
 export const withWays = (
   nextConfigOrOptions: NextConfigFragment | WaysConfig = {},
   explicitOptions?: WaysConfig
@@ -276,8 +318,10 @@ export const withWays = (
     return nextConfig;
   }
 
-  const publicConfig = toSerializablePublicConfig(resolvedConfig, resolvedProjectRoot, false);
-  const configAliasPath = loadedConfig?.configFile;
+  const publicConfig = toSerializablePublicConfig(resolvedConfig, resolvedProjectRoot, true);
+  const configAliasPath = loadedConfig?.configFile
+    ? ensureGeneratedInternalConfig(resolvedProjectRoot, loadedConfig.configFile, publicConfig)
+    : undefined;
   const needsAliasInjection = Boolean(configAliasPath);
 
   const wrappedWebpack = (config: any, options: any) => {

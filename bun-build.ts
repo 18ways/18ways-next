@@ -4,6 +4,7 @@ import { $ } from 'bun';
 import fs from 'node:fs';
 import path from 'node:path';
 
+const DIST_DIR = path.join(process.cwd(), 'dist');
 const DIST_TYPES_DIR = path.join(process.cwd(), 'dist-types');
 const GLOBAL_TYPES_PATH = path.join(process.cwd(), 'global.d.ts');
 
@@ -71,8 +72,10 @@ const rewriteRelativeImportSpecifiers = (dirPath: string) => {
 
 async function build() {
   await $`rm -rf dist`;
+  await $`rm -rf dist-cjs`;
   await $`rm -rf dist-types`;
   await $`mkdir -p dist`;
+  await $`mkdir -p dist-cjs`;
   await $`mkdir -p dist-types`;
   await $`rm -f ../../.cache/tsc/18ways-next.tsbuildinfo`;
   await $`../../node_modules/.bin/tsc \
@@ -82,8 +85,12 @@ async function build() {
     --emitDeclarationOnly false \
     --jsx react-jsx \
     --outDir dist`;
-  rewriteRelativeImportSpecifiers(path.join(process.cwd(), 'dist'));
+  rewriteRelativeImportSpecifiers(DIST_DIR);
   await $`cp config-loader.cjs dist/config-loader.cjs`;
+  await $`../../node_modules/.bin/tsc \
+    -p tsconfig.config-cjs.json`;
+  await $`mv dist-cjs/config.js dist/config.cjs`;
+  await $`rm -rf dist-cjs`;
   await $`rm -f dist/tsconfig.tsbuildinfo`;
   await $`rm -f ../../.cache/tsc/18ways-next.tsbuildinfo`;
   await $`../../node_modules/.bin/tsc \

@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": false,
+    "emitDeclarationOnly": false,
+    "incremental": false,
+    "module": "commonjs",
+    "outDir": "dist-cjs"
+  },
+  "include": ["config.ts", "config-loader.d.cts"]
+}
