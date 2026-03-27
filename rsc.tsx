@@ -244,44 +244,80 @@ const buildLocaleUrl = (
   );
 };
 
-export const generateWaysMetadata = async (
-  props?: Partial<
-    Pick<
-      WaysRootProps,
-      'locale' | 'baseLocale' | 'acceptedLocales' | 'apiKey' | '_apiUrl' | '_requestInitDecorator'
-    >
-  > & {
-    origin?: string;
-    pathRouting?: WaysPathRoutingConfig;
-    domains?: WaysDomainConfig[];
-    localeParamName?: string;
-    params?: WaysMaybePromise<WaysRouteParams>;
-    pathname?: string;
-  }
-): Promise<Record<string, any>> => {
-  const headerStore = await headers();
-  const cookieStore = await cookies();
+type WaysMetadataOptions = Partial<
+  Pick<
+    WaysRootProps,
+    'locale' | 'baseLocale' | 'acceptedLocales' | 'apiKey' | '_apiUrl' | '_requestInitDecorator'
+  >
+> & {
+  origin?: string;
+  pathRouting?: WaysPathRoutingConfig;
+  domains?: WaysDomainConfig[];
+  localeParamName?: string;
+  params?: WaysMaybePromise<WaysRouteParams>;
+  pathname?: string;
+};
 
+type WaysAlternates = {
+  canonical: string;
+  languages?: Record<string, string>;
+};
+
+const buildWaysAlternates = async (props?: WaysMetadataOptions): Promise<WaysAlternates> => {
+  const headerStore = await headers();
   const { locale, acceptedLocales, invalidRouteLocale } = await resolveLocaleFromRequest(props);
+
   if (invalidRouteLocale) {
     notFound();
   }
+
   const fallbackLocale = props?.baseLocale || props?.locale || locale;
   const routePathRouting = resolveRoutePathRouting(props?.pathRouting, Boolean(props?.params));
   const { pathname } = await resolveRequestPaths(locale, routePathRouting, props?.pathname);
-
   const origin = resolveOrigin({
     explicitOrigin: props?.origin,
     host: headerStore.get('x-forwarded-host') || headerStore.get('host'),
     forwardedProto: headerStore.get('x-forwarded-proto'),
   });
 
-  const pathRoutingEnabled = Boolean(
-    routePathRouting && isPathRoutingEnabled(pathname, routePathRouting)
+  if (!routePathRouting || !isPathRoutingEnabled(pathname, routePathRouting)) {
+    return {
+      canonical: joinOriginAndPathname(origin, pathname),
+    };
+  }
+
+  const languages = Object.fromEntries(
+    acceptedLocales.map((supportedLocale) => [
+      supportedLocale,
+      buildLocaleUrl(origin, pathname, supportedLocale, props?.domains),
+    ])
   );
 
+  languages['x-default'] = buildLocaleUrl(origin, pathname, fallbackLocale, props?.domains);
+
+  return {
+    canonical: buildLocaleUrl(origin, pathname, locale, props?.domains),
+    languages,
+  };
+};
+
+export const generateWaysMetadata = async (
+  props?: WaysMetadataOptions
+): Promise<Record<string, any>> => {
+  const cookieStore = await cookies();
+
+  const { locale, acceptedLocales, invalidRouteLocale } = await resolveLocaleFromRequest(props);
+  if (invalidRouteLocale) {
+    notFound();
+  }
+  const alternates = await buildWaysAlternates(props);
+
   const metadata: Record<string, any> = {
-    metadataBase: new URL(origin),
+    metadataBase: new URL(
+      typeof alternates.canonical === 'string'
+        ? new URL(alternates.canonical).origin
+        : resolveOrigin({ explicitOrigin: props?.origin })
+    ),
     openGraph: {
       locale: localeToOpenGraphLocale(locale),
       alternateLocale: acceptedLocales
@@ -292,32 +328,8 @@ export const generateWaysMetadata = async (
       '18ways_locale': locale,
       '18ways_locale_cookie': cookieStore.get(WAYS_LOCALE_COOKIE_NAME)?.value || '',
     },
+    alternates,
   };
-
-  if (pathRoutingEnabled) {
-    const alternatesLanguages = Object.fromEntries(
-      acceptedLocales.map((supportedLocale) => [
-        supportedLocale,
-        buildLocaleUrl(origin, pathname, supportedLocale, props?.domains),
-      ])
-    );
-
-    alternatesLanguages['x-default'] = buildLocaleUrl(
-      origin,
-      pathname,
-      fallbackLocale,
-      props?.domains
-    );
-
-    metadata.alternates = {
-      canonical: buildLocaleUrl(origin, pathname, locale, props?.domains),
-      languages: alternatesLanguages,
-    };
-  } else {
-    metadata.alternates = {
-      canonical: joinOriginAndPathname(origin, pathname),
-    };
-  }
 
   return metadata;
 };
