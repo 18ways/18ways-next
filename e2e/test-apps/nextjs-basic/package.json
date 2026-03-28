@@ -13,15 +13,7 @@
     "react-dom": "18.3.1",
     "crypto-js": "^4.2.0",
     "fast-xml-parser": "^4.4.1",
-    "set-value": "^4.1.0",
-    "@18ways/core": "link:../../../../18ways-core",
-    "@18ways/react": "link:../../../../18ways-react",
-    "@18ways/next": "link:../../.."
-  },
-  "overrides": {
-    "@18ways/core": "link:../../../../18ways-core",
-    "@18ways/react": "link:../../../../18ways-react",
-    "@18ways/next": "link:../../.."
+    "set-value": "^4.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
