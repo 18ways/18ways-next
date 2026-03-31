@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { fetchAcceptedLocales, resolveAcceptedLocales, resolveOrigin } from '@18ways/core/common';
 import {
   WAYS_LOCALE_COOKIE_NAME,
   extractLocalePrefix,
@@ -14,6 +15,18 @@ import {
   stripPortFromHost,
 } from './next-domains';
 import type { WaysConfig } from './ways-config';
+
+type WaysProxyConfig = Pick<
+  WaysConfig,
+  | 'router'
+  | 'domains'
+  | 'acceptedLocales'
+  | 'baseLocale'
+  | 'apiKey'
+  | '_apiUrl'
+  | '_requestInitDecorator'
+  | 'requestOrigin'
+>;
 
 const WAYS_PROXY_MATCHER = [
   '/((?!_next|robots\\.txt$|llms\\.txt$|sitemap\\.xml$|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
@@ -37,7 +50,8 @@ const resolveAcceptedLocale = (
 
 const resolveProxyLocale = (
   request: NextRequest,
-  config: Pick<WaysConfig, 'domains' | 'acceptedLocales' | 'baseLocale'>
+  config: Pick<WaysProxyConfig, 'domains' | 'baseLocale'>,
+  acceptedLocales: string[]
 ): string => {
   const resolvedDomains = resolveWaysDomains(config.baseLocale, config.domains);
   const currentHost = stripPortFromHost(
@@ -50,18 +64,18 @@ const resolveProxyLocale = (
 
   const cookieLocale = resolveAcceptedLocale(
     request.cookies.get(WAYS_LOCALE_COOKIE_NAME)?.value,
-    config.acceptedLocales
+    acceptedLocales
   );
   if (cookieLocale) {
     return cookieLocale;
   }
 
-  if (config.acceptedLocales?.length) {
+  if (acceptedLocales.length) {
     const preferredLocales = readPreferredLocalesFromAcceptLanguageHeader(
       request.headers.get('accept-language')
     );
     for (const preferredLocale of preferredLocales) {
-      const matchedLocale = resolveAcceptedLocale(preferredLocale, config.acceptedLocales);
+      const matchedLocale = resolveAcceptedLocale(preferredLocale, acceptedLocales);
       if (matchedLocale) {
         return matchedLocale;
       }
@@ -71,36 +85,89 @@ const resolveProxyLocale = (
   return config.baseLocale;
 };
 
+const resolveProxyAcceptedLocales = async (
+  request: NextRequest,
+  config: Pick<
+    WaysProxyConfig,
+    | 'acceptedLocales'
+    | 'baseLocale'
+    | 'apiKey'
+    | '_apiUrl'
+    | '_requestInitDecorator'
+    | 'requestOrigin'
+  >
+): Promise<string[]> => {
+  if (Array.isArray(config.acceptedLocales)) {
+    return resolveAcceptedLocales(config.baseLocale, config.acceptedLocales);
+  }
+
+  const requestOrigin = resolveOrigin({
+    explicitOrigin: config.requestOrigin,
+    host: request.headers.get('x-forwarded-host') || request.headers.get('host'),
+    forwardedProto: request.headers.get('x-forwarded-proto'),
+  });
+
+  return resolveAcceptedLocales(
+    config.baseLocale,
+    await fetchAcceptedLocales(config.baseLocale, {
+      apiKey: config.apiKey,
+      apiUrl: config._apiUrl,
+      origin: requestOrigin,
+      _requestInitDecorator: config._requestInitDecorator,
+    })
+  );
+};
+
+const appendVaryHeader = (response: NextResponse, headerName: string) => {
+  const varyValues = (response.headers.get('vary') || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (varyValues.some((value) => value.toLowerCase() === headerName.toLowerCase())) {
+    return;
+  }
+
+  response.headers.set('vary', [...varyValues, headerName].join(', '));
+};
+
 const getWaysProxyResponseForConfig = async (
   request: NextRequest,
-  config: Pick<WaysConfig, 'router' | 'domains' | 'acceptedLocales' | 'baseLocale'>
+  config: WaysProxyConfig
 ): Promise<NextResponse | null> => {
   if (config.router !== 'app') {
     return null;
   }
 
   const pathname = normalizePathname(request.nextUrl.pathname);
-  const acceptedLocales = config.acceptedLocales || [config.baseLocale];
   const resolvedDomains = resolveWaysDomains(config.baseLocale, config.domains);
   const currentHost = stripPortFromHost(
     request.headers.get('x-forwarded-host') || request.headers.get('host')
   );
 
   if (pathname === '/') {
-    const locale = resolveProxyLocale(request, config);
+    const acceptedLocales = await resolveProxyAcceptedLocales(request, config);
+    const locale = resolveProxyLocale(request, config, acceptedLocales);
     const redirectUrl = request.nextUrl.clone();
     const targetDomain = findWaysDomainForLocale(locale, resolvedDomains);
     if (targetDomain && currentHost && currentHost !== targetDomain.domain) {
       redirectUrl.host = targetDomain.domain;
     }
     redirectUrl.pathname = `/${locale}`;
-    return NextResponse.redirect(redirectUrl);
+    const response = NextResponse.redirect(redirectUrl, 307);
+    appendVaryHeader(response, 'Accept-Language');
+    appendVaryHeader(response, 'Cookie');
+    return response;
   }
 
   if (!config.domains?.length) {
     return null;
   }
 
+  const acceptedLocales =
+    Array.isArray(config.acceptedLocales) && config.acceptedLocales.length > 0
+      ? resolveAcceptedLocales(config.baseLocale, config.acceptedLocales)
+      : [config.baseLocale];
   const pathInfo = extractLocalePrefix(pathname, acceptedLocales);
   if (!pathInfo.locale) {
     return null;
@@ -123,11 +190,11 @@ const getWaysProxyResponseForConfig = async (
 export async function getWaysProxyResponse(request: NextRequest): Promise<NextResponse | null>;
 export async function getWaysProxyResponse(
   request: NextRequest,
-  config: Pick<WaysConfig, 'router' | 'domains' | 'acceptedLocales' | 'baseLocale'>
+  config: WaysProxyConfig
 ): Promise<NextResponse | null>;
 export async function getWaysProxyResponse(
   request: NextRequest,
-  config?: Pick<WaysConfig, 'router' | 'domains' | 'acceptedLocales' | 'baseLocale'>
+  config?: WaysProxyConfig
 ): Promise<NextResponse | null> {
   if (config) {
     return getWaysProxyResponseForConfig(request, config);
@@ -136,9 +203,7 @@ export async function getWaysProxyResponse(
   return (await loadImplicitProxy())(request);
 }
 
-export const createWaysProxy = (
-  config: Pick<WaysConfig, 'router' | 'domains' | 'acceptedLocales' | 'baseLocale'>
-) => {
+export const createWaysProxy = (config: WaysProxyConfig) => {
   return async function waysProxy(request: NextRequest): Promise<NextResponse> {
     return (await getWaysProxyResponseForConfig(request, config)) || NextResponse.next();
   };
