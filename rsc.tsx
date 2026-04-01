@@ -21,6 +21,7 @@ import {
   fetchAcceptedLocales,
   resolveAcceptedLocales,
   resolveOrigin,
+  type _RequestInitDecorator,
 } from '@18ways/core/common';
 import { readPreferredLocalesFromAcceptLanguageHeader } from '@18ways/core/locale-drivers';
 import { createNextLocaleEngine, type NextLocaleDriverContext } from './next-locale-drivers';
@@ -49,6 +50,12 @@ const DEFAULT_SEGMENT_PATH_ROUTING: WaysPathRoutingConfig = {
   exclude: [],
 };
 
+const reactCache: typeof React.cache =
+  typeof React.cache === 'function'
+    ? React.cache
+    : (((fn: (..._args: any[]) => any) => fn) as typeof React.cache);
+const nextRequestInitDecorator = createNextRequestInitDecorator();
+
 const resolveRoutePathRouting = (
   pathRouting: WaysPathRoutingConfig | undefined,
   hasRouteParams: boolean | undefined
@@ -75,6 +82,14 @@ type LocaleResolutionProps = Partial<
   origin?: string;
 };
 
+type ResolvedLocaleContext = {
+  locale: string;
+  acceptedLocales: string[];
+  requestOrigin: string;
+  routeLocale?: string;
+  invalidRouteLocale?: string;
+};
+
 const resolveRequestAcceptedLocales = async (
   fallbackLocale: string,
   requestOrigin: string,
@@ -88,27 +103,98 @@ const resolveRequestAcceptedLocales = async (
 
   return resolveAcceptedLocales(
     acceptedLocalesBaseLocale,
-    await fetchAcceptedLocales(acceptedLocalesBaseLocale, {
-      apiUrl: props?._apiUrl,
-      origin: requestOrigin,
-      apiKey: props?.apiKey,
-      _requestInitDecorator: _composeRequestInitDecorators(
-        createNextRequestInitDecorator(),
-        props?._requestInitDecorator
-      ),
-    })
+    await fetchAcceptedLocalesCached(
+      acceptedLocalesBaseLocale,
+      requestOrigin,
+      props?._apiUrl,
+      props?.apiKey,
+      props?._requestInitDecorator
+    )
   );
+};
+
+const fetchAcceptedLocalesCached = reactCache(
+  async (
+    fallbackLocale: string,
+    requestOrigin: string,
+    apiUrl: string | undefined,
+    apiKey: string | undefined,
+    requestInitDecorator: _RequestInitDecorator | undefined
+  ) => {
+    return fetchAcceptedLocales(fallbackLocale, {
+      apiUrl,
+      origin: requestOrigin,
+      apiKey,
+      _requestInitDecorator: _composeRequestInitDecorators(
+        nextRequestInitDecorator,
+        requestInitDecorator
+      ),
+    });
+  }
+);
+
+const resolveRequestOrigin = async (
+  props?: Pick<LocaleResolutionProps, 'origin'>
+): Promise<string> => {
+  if (props?.origin) {
+    return resolveOrigin({
+      explicitOrigin: props.origin,
+    });
+  }
+
+  const headerStore = await headers();
+
+  return resolveOrigin({
+    host: headerStore.get('x-forwarded-host') || headerStore.get('host'),
+    forwardedProto: headerStore.get('x-forwarded-proto'),
+  });
+};
+
+const resolveExplicitLocaleContext = async (
+  props?: LocaleResolutionProps
+): Promise<ResolvedLocaleContext | undefined> => {
+  const routeLocale = await resolveRouteLocaleFromParams(props?.params, props?.localeParamName);
+  const explicitLocale = props?.locale || routeLocale;
+
+  if (!explicitLocale) {
+    return undefined;
+  }
+
+  const requestOrigin = await resolveRequestOrigin(props);
+  const acceptedLocalesBaseLocale = props?.baseLocale || explicitLocale;
+  const acceptedLocales = await resolveRequestAcceptedLocales(
+    acceptedLocalesBaseLocale,
+    requestOrigin,
+    props
+  );
+  const matchedLocale = findSupportedLocale(explicitLocale, acceptedLocales);
+
+  if (!matchedLocale) {
+    return {
+      locale: acceptedLocalesBaseLocale,
+      acceptedLocales,
+      requestOrigin,
+      routeLocale: explicitLocale,
+      invalidRouteLocale: explicitLocale,
+    };
+  }
+
+  return {
+    locale: matchedLocale,
+    acceptedLocales,
+    requestOrigin,
+    routeLocale: matchedLocale,
+  };
 };
 
 const resolveLocaleFromRequest = async (
   props?: LocaleResolutionProps
-): Promise<{
-  locale: string;
-  acceptedLocales: string[];
-  requestOrigin: string;
-  routeLocale?: string;
-  invalidRouteLocale?: string;
-}> => {
+): Promise<ResolvedLocaleContext> => {
+  const explicitLocaleContext = await resolveExplicitLocaleContext(props);
+  if (explicitLocaleContext) {
+    return explicitLocaleContext;
+  }
+
   const cookieStore = await cookies();
   const headerStore = await headers();
   const acceptLanguageHeader = headerStore.get('accept-language');
@@ -212,6 +298,17 @@ const resolveRequestPaths = async (
   pathRouting?: WaysPathRoutingConfig,
   pathnameOverride?: string
 ): Promise<{ pathname: string; localizedPathname: string }> => {
+  if (pathnameOverride) {
+    const pathname = normalizePathname(pathnameOverride);
+
+    return {
+      pathname,
+      localizedPathname: pathRouting
+        ? normalizePathname(buildLocalizedPathname(pathname, locale))
+        : pathname,
+    };
+  }
+
   const headerStore = await headers();
 
   const pathname = normalizePathname(
@@ -263,9 +360,12 @@ type WaysAlternates = {
   languages?: Record<string, string>;
 };
 
-const buildWaysAlternates = async (props?: WaysMetadataOptions): Promise<WaysAlternates> => {
-  const headerStore = await headers();
-  const { locale, acceptedLocales, invalidRouteLocale } = await resolveLocaleFromRequest(props);
+const buildWaysAlternates = async (
+  props?: WaysMetadataOptions,
+  resolvedContext?: ResolvedLocaleContext
+): Promise<WaysAlternates> => {
+  const { locale, acceptedLocales, invalidRouteLocale, requestOrigin } =
+    resolvedContext || (await resolveLocaleFromRequest(props));
 
   if (invalidRouteLocale) {
     notFound();
@@ -274,11 +374,7 @@ const buildWaysAlternates = async (props?: WaysMetadataOptions): Promise<WaysAlt
   const fallbackLocale = props?.baseLocale || props?.locale || locale;
   const routePathRouting = resolveRoutePathRouting(props?.pathRouting, Boolean(props?.params));
   const { pathname } = await resolveRequestPaths(locale, routePathRouting, props?.pathname);
-  const origin = resolveOrigin({
-    explicitOrigin: props?.origin,
-    host: headerStore.get('x-forwarded-host') || headerStore.get('host'),
-    forwardedProto: headerStore.get('x-forwarded-proto'),
-  });
+  const origin = requestOrigin;
 
   if (!routePathRouting || !isPathRoutingEnabled(pathname, routePathRouting)) {
     return {
@@ -304,13 +400,18 @@ const buildWaysAlternates = async (props?: WaysMetadataOptions): Promise<WaysAlt
 export const generateWaysMetadata = async (
   props?: WaysMetadataOptions
 ): Promise<Record<string, any>> => {
-  const cookieStore = await cookies();
-
-  const { locale, acceptedLocales, invalidRouteLocale } = await resolveLocaleFromRequest(props);
+  const resolvedContext = await resolveLocaleFromRequest(props);
+  const { locale, acceptedLocales, invalidRouteLocale } = resolvedContext;
   if (invalidRouteLocale) {
     notFound();
   }
-  const alternates = await buildWaysAlternates(props);
+  const alternates = await buildWaysAlternates(props, resolvedContext);
+  const shouldReadLocaleCookie = !(
+    props?.pathname &&
+    props?.origin &&
+    (props?.locale || props?.params)
+  );
+  const cookieStore = shouldReadLocaleCookie ? await cookies() : null;
 
   const metadata: Record<string, any> = {
     metadataBase: new URL(
@@ -326,7 +427,7 @@ export const generateWaysMetadata = async (
     },
     other: {
       '18ways_locale': locale,
-      '18ways_locale_cookie': cookieStore.get(WAYS_LOCALE_COOKIE_NAME)?.value || '',
+      '18ways_locale_cookie': cookieStore?.get(WAYS_LOCALE_COOKIE_NAME)?.value || '',
     },
     alternates,
   };
@@ -343,6 +444,7 @@ type WaysRscProps = WaysProps & {
   routeManifest?: WaysRouteManifest;
   params?: WaysMaybePromise<WaysRouteParams>;
   pathname?: string;
+  origin?: string;
 };
 
 const parsePersistLocaleCookieHeader = (rawValue: string | null): boolean | undefined => {

@@ -100,4 +100,44 @@ describe('rsc metadata generation', () => {
       },
     });
   });
+
+  it('skips request headers, cookies, and locale fetching when metadata context is explicit', async () => {
+    const { headers, cookies } = await import('next/headers');
+    const { fetchAcceptedLocales } = await import('@18ways/core/common');
+    vi.mocked(headers).mockClear();
+    vi.mocked(cookies).mockClear();
+    vi.mocked(fetchAcceptedLocales).mockClear();
+
+    const metadata = await generateWaysMetadata({
+      apiKey: 'test-api-key',
+      baseLocale: 'en-GB',
+      locale: 'ja-JP',
+      origin: 'https://explicit.18ways.com',
+      pathname: '/docs',
+      pathRouting: PATH_ROUTING,
+    });
+
+    expect(fetchAcceptedLocales).toHaveBeenCalledTimes(1);
+    expect(fetchAcceptedLocales).toHaveBeenCalledWith(
+      'en-GB',
+      expect.objectContaining({
+        apiKey: 'test-api-key',
+        origin: 'https://explicit.18ways.com',
+      })
+    );
+    expect(headers).not.toHaveBeenCalled();
+    expect(cookies).not.toHaveBeenCalled();
+    expect(metadata.alternates).toEqual({
+      canonical: 'https://explicit.18ways.com/ja-JP/docs',
+      languages: {
+        'en-GB': 'https://explicit.18ways.com/en-GB/docs',
+        'ja-JP': 'https://explicit.18ways.com/ja-JP/docs',
+        'x-default': 'https://explicit.18ways.com/en-GB/docs',
+      },
+    });
+    expect(metadata.other).toEqual({
+      '18ways_locale': 'ja-JP',
+      '18ways_locale_cookie': '',
+    });
+  });
 });

@@ -277,8 +277,15 @@ const resolveMetadataInput = async (params: {
 };
 
 export const createWaysRuntime = (options: WaysConfig): WaysRuntime => {
-  const { pathRouting, domains, localeParamName, router, routeManifest, ...waysRootOptions } =
-    options;
+  const {
+    pathRouting,
+    domains,
+    localeParamName,
+    router,
+    routeManifest,
+    requestOrigin,
+    ...waysRootOptions
+  } = options;
   const resolvedRouter =
     router === 'pages' || router === 'path' ? 'path' : router === 'none' ? 'none' : 'app';
   const resolvedPathRouting = resolvedRouter === 'app' ? pathRouting : undefined;
@@ -295,6 +302,7 @@ export const createWaysRuntime = (options: WaysConfig): WaysRuntime => {
   const localeProps: Partial<
     Pick<WaysRootProps, 'locale' | 'baseLocale' | 'apiKey' | '_apiUrl' | 'acceptedLocales'>
   > & {
+    origin?: string;
     pathRouting?: WaysConfig['pathRouting'];
     _requestInitDecorator?: WaysRootProps['_requestInitDecorator'];
     domains?: WaysDomainConfig[];
@@ -305,6 +313,7 @@ export const createWaysRuntime = (options: WaysConfig): WaysRuntime => {
     apiKey: waysRootOptions.apiKey,
     _apiUrl: waysRootOptions._apiUrl,
     acceptedLocales: explicitAcceptedLocales,
+    origin: requestOrigin,
     _requestInitDecorator: waysRootOptions._requestInitDecorator,
     pathRouting: resolvedPathRouting,
     domains,
@@ -322,6 +331,7 @@ export const createWaysRuntime = (options: WaysConfig): WaysRuntime => {
 
     return ServerWays({
       ...rootProps,
+      origin: requestOrigin,
       router: resolvedRouter,
       pathRouting: resolvedPathRouting,
       children,
