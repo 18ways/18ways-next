@@ -19,6 +19,7 @@ import {
 import {
   _composeRequestInitDecorators,
   fetchAcceptedLocales,
+  init,
   resolveAcceptedLocales,
   resolveOrigin,
   type _RequestInitDecorator,
@@ -121,15 +122,21 @@ const fetchAcceptedLocalesCached = reactCache(
     apiKey: string | undefined,
     requestInitDecorator: _RequestInitDecorator | undefined
   ) => {
-    return fetchAcceptedLocales(fallbackLocale, {
+    if (!apiKey) {
+      return [fallbackLocale];
+    }
+
+    init({
+      key: apiKey,
       apiUrl,
       origin: requestOrigin,
-      apiKey,
       _requestInitDecorator: _composeRequestInitDecorators(
         nextRequestInitDecorator,
         requestInitDecorator
       ),
     });
+
+    return fetchAcceptedLocales(fallbackLocale);
   }
 );
 

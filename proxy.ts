@@ -1,5 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { fetchAcceptedLocales, resolveAcceptedLocales, resolveOrigin } from '@18ways/core/common';
+import {
+  fetchAcceptedLocales,
+  init,
+  resolveAcceptedLocales,
+  resolveOrigin,
+} from '@18ways/core/common';
 import {
   WAYS_LOCALE_COOKIE_NAME,
   extractLocalePrefix,
@@ -86,35 +91,15 @@ const resolveProxyLocale = (
 };
 
 const resolveProxyAcceptedLocales = async (
-  request: NextRequest,
-  config: Pick<
-    WaysProxyConfig,
-    | 'acceptedLocales'
-    | 'baseLocale'
-    | 'apiKey'
-    | '_apiUrl'
-    | '_requestInitDecorator'
-    | 'requestOrigin'
-  >
+  config: Pick<WaysProxyConfig, 'acceptedLocales' | 'baseLocale' | 'apiKey'>
 ): Promise<string[]> => {
   if (Array.isArray(config.acceptedLocales)) {
     return resolveAcceptedLocales(config.baseLocale, config.acceptedLocales);
   }
 
-  const requestOrigin = resolveOrigin({
-    explicitOrigin: config.requestOrigin,
-    host: request.headers.get('x-forwarded-host') || request.headers.get('host'),
-    forwardedProto: request.headers.get('x-forwarded-proto'),
-  });
-
   return resolveAcceptedLocales(
     config.baseLocale,
-    await fetchAcceptedLocales(config.baseLocale, {
-      apiKey: config.apiKey,
-      apiUrl: config._apiUrl,
-      origin: requestOrigin,
-      _requestInitDecorator: config._requestInitDecorator,
-    })
+    config.apiKey ? await fetchAcceptedLocales(config.baseLocale) : [config.baseLocale]
   );
 };
 
@@ -135,6 +120,21 @@ const getWaysProxyResponseForConfig = async (
   request: NextRequest,
   config: WaysProxyConfig
 ): Promise<NextResponse | null> => {
+  const requestOrigin = resolveOrigin({
+    explicitOrigin: config.requestOrigin,
+    host: request.headers.get('x-forwarded-host') || request.headers.get('host'),
+    forwardedProto: request.headers.get('x-forwarded-proto'),
+  });
+
+  if (config.apiKey) {
+    init({
+      key: config.apiKey,
+      apiUrl: config._apiUrl,
+      origin: requestOrigin,
+      _requestInitDecorator: config._requestInitDecorator,
+    });
+  }
+
   if (config.router !== 'app') {
     return null;
   }
@@ -146,7 +146,7 @@ const getWaysProxyResponseForConfig = async (
   );
 
   if (pathname === '/') {
-    const acceptedLocales = await resolveProxyAcceptedLocales(request, config);
+    const acceptedLocales = await resolveProxyAcceptedLocales(config);
     const locale = resolveProxyLocale(request, config, acceptedLocales);
     const redirectUrl = request.nextUrl.clone();
     const targetDomain = findWaysDomainForLocale(locale, resolvedDomains);
