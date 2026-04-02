@@ -150,7 +150,6 @@ const buildMetadataTranslationMap = async (params: {
       apiUrl: initOptions._apiUrl,
       fetcher: initOptions.fetcher,
       cacheTtlSeconds: initOptions.cacheTtl,
-      origin: initOptions.requestOrigin,
       _requestInitDecorator: _composeRequestInitDecorators(
         createNextRequestInitDecorator(),
         initOptions._requestInitDecorator
@@ -165,7 +164,9 @@ const buildMetadataTranslationMap = async (params: {
       text,
     }));
 
-    const result = await common.fetchTranslations(requests);
+    const result = await common.fetchTranslations(requests, {
+      origin: initOptions.requestOrigin,
+    });
     if (!result.data.length) {
       return new Map();
     }

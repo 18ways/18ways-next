@@ -91,7 +91,8 @@ const resolveProxyLocale = (
 };
 
 const resolveProxyAcceptedLocales = async (
-  config: Pick<WaysProxyConfig, 'acceptedLocales' | 'baseLocale' | 'apiKey'>
+  config: Pick<WaysProxyConfig, 'acceptedLocales' | 'baseLocale' | 'apiKey'>,
+  requestOrigin?: string
 ): Promise<string[]> => {
   if (Array.isArray(config.acceptedLocales)) {
     return resolveAcceptedLocales(config.baseLocale, config.acceptedLocales);
@@ -99,7 +100,9 @@ const resolveProxyAcceptedLocales = async (
 
   return resolveAcceptedLocales(
     config.baseLocale,
-    config.apiKey ? await fetchAcceptedLocales(config.baseLocale) : [config.baseLocale]
+    config.apiKey
+      ? await fetchAcceptedLocales(config.baseLocale, { origin: requestOrigin })
+      : [config.baseLocale]
   );
 };
 
@@ -130,7 +133,6 @@ const getWaysProxyResponseForConfig = async (
     init({
       key: config.apiKey,
       apiUrl: config._apiUrl,
-      origin: requestOrigin,
       _requestInitDecorator: config._requestInitDecorator,
     });
   }
@@ -146,7 +148,7 @@ const getWaysProxyResponseForConfig = async (
   );
 
   if (pathname === '/') {
-    const acceptedLocales = await resolveProxyAcceptedLocales(config);
+    const acceptedLocales = await resolveProxyAcceptedLocales(config, requestOrigin);
     const locale = resolveProxyLocale(request, config, acceptedLocales);
     const redirectUrl = request.nextUrl.clone();
     const targetDomain = findWaysDomainForLocale(locale, resolvedDomains);

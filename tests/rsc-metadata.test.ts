@@ -118,7 +118,9 @@ describe('rsc metadata generation', () => {
     });
 
     expect(fetchAcceptedLocales).toHaveBeenCalledTimes(1);
-    expect(fetchAcceptedLocales).toHaveBeenCalledWith('en-GB');
+    expect(fetchAcceptedLocales).toHaveBeenCalledWith('en-GB', {
+      origin: 'https://explicit.18ways.com',
+    });
     expect(headers).not.toHaveBeenCalled();
     expect(cookies).not.toHaveBeenCalled();
     expect(metadata.alternates).toEqual({

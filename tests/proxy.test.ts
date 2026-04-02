@@ -35,7 +35,9 @@ describe('proxy locale negotiation', () => {
       }
     );
 
-    expect(fetchAcceptedLocales).toHaveBeenCalledWith('en-GB');
+    expect(fetchAcceptedLocales).toHaveBeenCalledWith('en-GB', {
+      origin: 'https://18ways.com',
+    });
     expect(response?.status).toBe(307);
     expect(response?.headers.get('location')).toBe('https://18ways.com/fr-FR');
     expect(response?.headers.get('vary')).toContain('Accept-Language');

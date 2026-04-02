@@ -129,14 +129,13 @@ const fetchAcceptedLocalesCached = reactCache(
     init({
       key: apiKey,
       apiUrl,
-      origin: requestOrigin,
       _requestInitDecorator: _composeRequestInitDecorators(
         nextRequestInitDecorator,
         requestInitDecorator
       ),
     });
 
-    return fetchAcceptedLocales(fallbackLocale);
+    return fetchAcceptedLocales(fallbackLocale, { origin: requestOrigin });
   }
 );
 

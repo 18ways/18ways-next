@@ -81,7 +81,9 @@ describe('rsc ways accepted locales handoff', () => {
       children: <div>Test App</div>,
     });
 
-    expect(fetchAcceptedLocales).toHaveBeenCalledWith('es-ES');
+    expect(fetchAcceptedLocales).toHaveBeenCalledWith('es-ES', {
+      origin: 'https://18ways.com',
+    });
   });
 
   it('uses the base locale when resolving accepted locales for the app shell', async () => {
@@ -95,7 +97,9 @@ describe('rsc ways accepted locales handoff', () => {
       children: <div>Test App</div>,
     });
 
-    expect(fetchAcceptedLocales).toHaveBeenCalledWith('en-US');
+    expect(fetchAcceptedLocales).toHaveBeenCalledWith('en-US', {
+      origin: 'https://18ways.com',
+    });
   });
 
   it('uses explicit accepted locales as the single app-shell source of truth', async () => {
