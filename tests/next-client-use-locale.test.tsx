@@ -79,7 +79,6 @@ describe('useLocale', () => {
       '18ways_cookie_consent=' +
       encodeURIComponent(JSON.stringify({ categories: ['necessary', 'functional'] })) +
       '; Path=/';
-    window.__18WAYS_ACCEPTED_LOCALES__ = ['en-GB', 'es-ES'];
   });
 
   it('updates locale state and refreshes when path routing is disabled', async () => {

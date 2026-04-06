@@ -44,7 +44,6 @@ describe('LocalePathSync', () => {
     router.refresh.mockReset();
     setCurrentLocale.mockClear();
     document.cookie = '18ways_locale=; Max-Age=0; Path=/';
-    window.__18WAYS_ACCEPTED_LOCALES__ = ['en-GB', 'es-ES', 'fr-FR'];
     window.history.replaceState({}, '', '/');
   });
 

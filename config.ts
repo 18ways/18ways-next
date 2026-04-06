@@ -230,7 +230,7 @@ const toSerializablePublicConfig = (
     localeParamName,
     cacheTtl: options.cacheTtl,
     messageFormatter: options.messageFormatter,
-    serverInitialTranslationTimeoutMs: options.serverInitialTranslationTimeoutMs,
+    suspenseTimeoutMs: options.suspenseTimeoutMs,
     _apiUrl: options._apiUrl,
     persistLocaleCookie:
       typeof options.persistLocaleCookie === 'boolean' ? options.persistLocaleCookie : undefined,

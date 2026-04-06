@@ -14,18 +14,17 @@ export type WaysRouteManifest = {
   ambiguous: string[];
 };
 
-export type WaysConfig = Pick<
-  WaysRootProps,
-  | 'apiKey'
-  | 'locale'
-  | 'acceptedLocales'
-  | 'cacheTtl'
-  | 'fetcher'
-  | 'messageFormatter'
-  | 'serverInitialTranslationTimeoutMs'
-  | '_apiUrl'
-  | '_requestInitDecorator'
-> & {
+export type WaysConfig = {
+  apiKey: WaysRootProps['apiKey'];
+  locale?: WaysRootProps['locale'];
+  acceptedLocales?: WaysRootProps['acceptedLocales'];
+  cacheTtl?: WaysRootProps['cacheTtl'];
+  fetcher?: WaysRootProps['fetcher'];
+  messageFormatter?: WaysRootProps['messageFormatter'];
+  suspenseTimeoutMs?: number;
+  _apiUrl?: WaysRootProps['_apiUrl'];
+  _requestInitDecorator?: WaysRootProps['_requestInitDecorator'];
+} & {
   baseLocale: string;
   router?: WaysLegacyRouterMode;
   domains?: WaysDomainConfig[];

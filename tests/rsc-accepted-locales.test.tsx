@@ -39,8 +39,7 @@ describe('rsc ways accepted locales handoff', () => {
     });
     mockState.cookieGet.mockReset();
     mockState.cookieGet.mockReturnValue(undefined);
-    delete window.__18WAYS_ACCEPTED_LOCALES__;
-    delete window.__18WAYS_IN_MEMORY_TRANSLATIONS__;
+    delete window.__18WAYS_TRANSLATION_STORE__;
     vi.clearAllMocks();
   });
 
@@ -59,7 +58,10 @@ describe('rsc ways accepted locales handoff', () => {
     render(element);
 
     await waitFor(() => {
-      expect(window.__18WAYS_ACCEPTED_LOCALES__).toEqual(['en-GB', 'es-ES']);
+      expect(window.__18WAYS_TRANSLATION_STORE__?.config.acceptedLocales).toEqual([
+        'en-GB',
+        'es-ES',
+      ]);
       expect(fetchAcceptedLocales).toHaveBeenCalledTimes(1);
     });
   });
@@ -118,7 +120,10 @@ describe('rsc ways accepted locales handoff', () => {
     render(element);
 
     await waitFor(() => {
-      expect(window.__18WAYS_ACCEPTED_LOCALES__).toEqual(['en-GB', 'ja-JP']);
+      expect(window.__18WAYS_TRANSLATION_STORE__?.config.acceptedLocales).toEqual([
+        'en-GB',
+        'ja-JP',
+      ]);
     });
   });
 });
