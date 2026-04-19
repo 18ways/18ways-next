@@ -348,6 +348,9 @@ export const useRouter = (): {
   const runtimePathRouting = useLocaleRuntimePathRouting();
   const runtimeDomains = useLocaleRuntimeDomains();
   const currentLocale = useCurrentLocale();
+  const pathname = usePathname();
+  const normalizedPathname = normalizePathname(pathname || '/');
+  const activePathLocale = extractRecognizedLocalePrefix(normalizedPathname).locale;
 
   const navigate = useCallback(
     (method: 'push' | 'replace', href: HrefInput, options?: WaysNavigationOptions) => {
@@ -398,13 +401,25 @@ export const useRouter = (): {
     [appRouter, compatRouter, currentLocale, routerMode, runtimeDomains, runtimePathRouting]
   );
 
+  const prefetch = useCallback(
+    (href: string) => {
+      const effectiveCurrentLocale = activePathLocale || currentLocale;
+      const resolvedHref = stringifyHrefInput(
+        localizeHrefInput(href, effectiveCurrentLocale, effectiveCurrentLocale, runtimePathRouting)
+      );
+
+      return appRouter.prefetch(resolvedHref);
+    },
+    [activePathLocale, appRouter, currentLocale, runtimePathRouting]
+  );
+
   return {
     push: (href, options) => navigate('push', href, options),
     replace: (href, options) => navigate('replace', href, options),
     refresh: () => appRouter.refresh(),
     back: () => window.history.back(),
     forward: () => window.history.forward(),
-    prefetch: (href: string) => appRouter.prefetch(href),
+    prefetch,
   };
 };
 

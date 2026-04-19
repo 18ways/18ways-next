@@ -7,6 +7,7 @@ const router = {
   push: vi.fn(),
   replace: vi.fn(),
   refresh: vi.fn(),
+  prefetch: vi.fn(),
 };
 
 let pathname = '/';
@@ -23,13 +24,17 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => searchParams,
 }));
 
+vi.mock('next/compat/router', () => ({
+  useRouter: () => null,
+}));
+
 vi.mock('@18ways/react', () => ({
   useAcceptedLocales: () => acceptedLocales,
   useCurrentLocale: () => currentLocale,
   useSetCurrentLocale: () => setCurrentLocale,
 }));
 
-import { useLocale } from '../next-client';
+import { useLocale, useRouter as useWaysRouter } from '../next-client';
 import { LocaleRuntimeConfigProvider } from '../next-locale-runtime';
 import { LocalePathSync } from '../next-locale-sync';
 
@@ -64,6 +69,12 @@ const UnsupportedLocaleChanger = () => {
   return <button onClick={() => setLocale('ja-JP')}>Switch Unsupported</button>;
 };
 
+const RouterPrefetcher = ({ href }: { href: string }) => {
+  const router = useWaysRouter();
+
+  return <button onClick={() => void router.prefetch(href)}>Prefetch</button>;
+};
+
 describe('useLocale', () => {
   beforeEach(() => {
     pathname = '/';
@@ -73,6 +84,7 @@ describe('useLocale', () => {
     router.push.mockReset();
     router.replace.mockReset();
     router.refresh.mockReset();
+    router.prefetch.mockReset();
     setCurrentLocale.mockClear();
     document.cookie = '18ways_locale=; Max-Age=0; Path=/';
     document.cookie =
@@ -177,6 +189,19 @@ describe('useLocale', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Switch' }));
 
     expect(document.cookie).not.toContain('18ways_locale=es-ES');
+  });
+
+  it('prefetches the localized href when path routing is enabled', async () => {
+    pathname = '/es-ES/docs';
+
+    render(
+      <LocaleRuntimeConfigProvider pathRouting={PATH_ROUTING}>
+        <RouterPrefetcher href="/docs/getting-started" />
+      </LocaleRuntimeConfigProvider>
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Prefetch' }));
+
+    expect(router.prefetch).toHaveBeenCalledWith('/es-ES/docs/getting-started');
   });
 
   it('does not rewrite the locale cookie when LocalePathSync is mounted and runtime persistence is disabled', async () => {
