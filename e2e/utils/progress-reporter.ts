@@ -93,7 +93,7 @@ class ProgressReporter implements Reporter {
     }
   }
 
-  onEnd(result: FullResult) {
+  onEnd(_result: FullResult) {
     // Final write
     this.writeProgress();
   }

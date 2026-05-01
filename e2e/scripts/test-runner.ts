@@ -1,19 +1,17 @@
 #!/usr/bin/env node
 
-import { spawn, execSync, ChildProcess } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import chalk from 'chalk';
 import http from 'http';
-import { startMockApiServer, stopMockApiServer, getMockApiPort } from '../utils/mock-api-server.js';
+import { startMockApiServer, getMockApiPort } from '../utils/mock-api-server.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const E2E_ROOT = path.join(__dirname, '..');
 const TEST_APPS_DIR = path.join(E2E_ROOT, 'test-apps');
-const REPO_ROOT = path.resolve(__dirname, '..', '..', '..', '..');
-const ROOT_LOCKFILE_CANDIDATES = ['bun.lock', 'bun.lockb'];
 const INPUT_MTIME_TOLERANCE_MS = 1000;
 const IGNORED_INPUT_DIRECTORIES = new Set([
   '.e2e-trash',
@@ -182,17 +180,6 @@ function log(message: string, color?: (str: string) => string) {
 
 function logPhase(phase: string) {
   console.log(`\n${chalk.bold.cyan(phase)}`);
-}
-
-function getRootLockfilePath(): string | null {
-  for (const candidate of ROOT_LOCKFILE_CANDIDATES) {
-    const lockfilePath = path.join(REPO_ROOT, candidate);
-    if (fs.existsSync(lockfilePath)) {
-      return lockfilePath;
-    }
-  }
-
-  return null;
 }
 
 function getLocalPlaywrightExecutablePath(): string {
@@ -459,10 +446,6 @@ function stopChildProcess(child: ChildProcess): void {
       }
     }
   }, 1000);
-}
-
-function getExternalDependencyNames(app: TestApp): string[] {
-  return getExternalDependencySpecs(app).map(([name]) => name);
 }
 
 function getExternalDependencySpecs(app: TestApp): Array<[string, string]> {
@@ -980,7 +963,7 @@ function stopServer(app: TestApp): void {
           app.process.kill('SIGKILL');
         }
       }, 1000);
-    } catch (error) {
+    } catch {
       // Process might already be dead, that's fine
     }
     app.process = undefined;
@@ -1059,7 +1042,7 @@ async function runPlaywrightTests(app: TestApp, suite?: string): Promise<TestRes
             updateProgress(app.name, 'test', 'running');
           }
         }
-      } catch (e) {
+      } catch {
         // Ignore parse errors during writing
       }
     }, 200); // Poll every 200ms

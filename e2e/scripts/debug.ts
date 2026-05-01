@@ -80,7 +80,7 @@ async function waitForServer(port: number, maxAttempts = 30): Promise<boolean> {
   for (let i = 0; i < maxAttempts; i++) {
     try {
       await new Promise<void>((resolve, reject) => {
-        const req = http.get(`http://localhost:${port}`, (res) => {
+        const req = http.get(`http://localhost:${port}`, (_res) => {
           resolve();
         });
         req.on('error', reject);
