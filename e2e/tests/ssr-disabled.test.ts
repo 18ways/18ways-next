@@ -13,7 +13,7 @@ test.describe('SSR Disabled', () => {
     page.route('**/seed', seedHandlers.success);
   });
 
-  test('initial HTML loads English, then Japanese once network requests done', async ({
+  test('mounts the client app after withheld scripts and honors the persisted locale', async ({
     page,
     context,
   }) => {
@@ -23,26 +23,12 @@ test.describe('SSR Disabled', () => {
     // Navigate - use 'commit' to avoid waiting for blocked scripts
     await page.goto(appUrl, { waitUntil: 'commit' });
 
-    // The root div should be present in the HTML (SSR renders this)
-    const root = page.getByTestId('root');
-    await expect(root).toBeAttached();
-
-    // But the app div inside should not exist yet (SSR disabled)
-    const appRoot = page.getByTestId('app');
-    await expect(appRoot).not.toBeAttached();
+    const helloWorld = page.locator('[data-translation-key="hello.world"]').first();
+    await expect(helloWorld).not.toBeAttached();
 
     // Wait for React to mount and render the ClientHome component
     await continueScripts();
-    await expect(appRoot).toBeVisible();
-
-    // Verify the component rendered with content
-    const helloWorld = appRoot.locator('[data-translation-key="hello.world"]');
-    await expect(helloWorld).toBeVisible();
-    await expect(appRoot.locator('[data-testid="language-switcher"]')).toBeVisible();
-
-    // Verify no React errors occurred (component rendered successfully)
-    const content = await helloWorld.textContent();
-    expect(content).toBeTruthy(); // Should have some text content, not empty
+    await expect(helloWorld).toHaveText('こんにちは世界', { timeout: 10000 });
 
     // Verify language switching works
     const languageSwitcher = page.getByTestId('language-switcher');

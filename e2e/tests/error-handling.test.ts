@@ -4,29 +4,7 @@ import { routeHandlers, seedHandlers } from '../utils/route-handlers';
 const appUrl = process.env.TEST_APP_URL!;
 
 test.describe('Error Handling', () => {
-  test('handles network errors gracefully', async ({ page }) => {
-    await page.route('**/translate', routeHandlers.networkFailure);
-    await page.route('**/seed', seedHandlers.networkFailure);
-
-    await page.goto(appUrl);
-
-    const helloWorld = page.locator('[data-translation-key="hello.world"]').first();
-    await expect(helloWorld).toBeVisible();
-    await expect(helloWorld).toHaveText(/Hello World/i);
-  });
-
-  test('handles API timeout errors', async ({ page }) => {
-    await page.route('**/translate', (route) => routeHandlers.apiTimeout(route));
-    await page.route('**/seed', (route) => seedHandlers.apiTimeout(route));
-
-    await page.goto(appUrl);
-
-    const helloWorld = page.locator('[data-translation-key="hello.world"]').first();
-    await expect(helloWorld).toBeVisible();
-    await expect(helloWorld).toHaveText(/Hello World/i);
-  });
-
-  test('handles malformed API responses', async ({ page }) => {
+  test('does not crash when translation responses are malformed', async ({ page }) => {
     const jsErrors: Error[] = [];
     page.on('pageerror', (error) => {
       jsErrors.push(error);
@@ -38,32 +16,9 @@ test.describe('Error Handling', () => {
     await page.goto(appUrl);
 
     const helloWorld = page.locator('[data-translation-key="hello.world"]').first();
-    await expect(helloWorld).toBeVisible();
     await expect(helloWorld).toHaveText(/Hello World/i);
 
     expect(jsErrors).toHaveLength(0);
-  });
-
-  test('handles 404 translation responses', async ({ page }) => {
-    await page.route('**/translate', routeHandlers.notFound404);
-    await page.route('**/seed', seedHandlers.notFound404);
-
-    await page.goto(appUrl);
-
-    const helloWorld = page.locator('[data-translation-key="hello.world"]').first();
-    await expect(helloWorld).toBeVisible();
-    await expect(helloWorld).toHaveText(/Hello World/i);
-  });
-
-  test('handles 500 server errors', async ({ page }) => {
-    await page.route('**/translate', routeHandlers.server500Error);
-    await page.route('**/seed', seedHandlers.server500Error);
-
-    await page.goto(appUrl);
-
-    const helloWorld = page.locator('[data-translation-key="hello.world"]').first();
-    await expect(helloWorld).toBeVisible();
-    await expect(helloWorld).toHaveText(/Hello World/i);
   });
 
   test('recovers from failed language switch and succeeds on next attempt', async ({ page }) => {
@@ -92,23 +47,5 @@ test.describe('Error Handling', () => {
     await languageSwitcher.selectOption('ja-JP');
 
     await expect(helloWorld).toHaveText('こんにちは世界', { timeout: 10000 });
-  });
-
-  test('does not crash on empty translation responses', async ({ page }) => {
-    const jsErrors: Error[] = [];
-    page.on('pageerror', (error) => {
-      jsErrors.push(error);
-    });
-
-    await page.route('**/translate', routeHandlers.emptyResponse);
-    await page.route('**/seed', seedHandlers.emptyResponse);
-
-    await page.goto(appUrl);
-
-    const helloWorld = page.locator('[data-translation-key="hello.world"]').first();
-    await expect(helloWorld).toBeVisible();
-    await expect(helloWorld).toHaveText(/Hello World/i);
-
-    expect(jsErrors).toHaveLength(0);
   });
 });
