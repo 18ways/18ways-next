@@ -9,6 +9,7 @@ import {
   WAYS_LOCALE_COOKIE_NAME,
   extractLocalePrefix,
   findSupportedLocale,
+  isPathRoutingEnabled,
   normalizePathname,
   recognizeLocale,
 } from '@18ways/core/i18n-shared';
@@ -31,6 +32,8 @@ type WaysProxyConfig = Pick<
   | '_apiUrl'
   | '_requestInitDecorator'
   | 'requestOrigin'
+  | 'pathRouting'
+  | 'routeManifest'
 >;
 
 const WAYS_PROXY_MATCHER = [
@@ -119,6 +122,108 @@ const appendVaryHeader = (response: NextResponse, headerName: string) => {
   response.headers.set('vary', [...varyValues, headerName].join(', '));
 };
 
+const isDynamicRouteSegment = (segment: string): boolean => {
+  return /^\[[^.[\]/]+\]$/.test(segment);
+};
+
+const isCatchAllRouteSegment = (segment: string): boolean => {
+  return /^\[\.\.\.[^[\]/]+\]$/.test(segment);
+};
+
+const isOptionalCatchAllRouteSegment = (segment: string): boolean => {
+  return /^\[\[\.\.\.[^[\]/]+\]\]$/.test(segment);
+};
+
+const routeManifestPatternMatchesPathname = (pattern: string, pathname: string): boolean => {
+  const patternSegments = normalizePathname(pattern).split('/').filter(Boolean);
+  const pathnameSegments = normalizePathname(pathname).split('/').filter(Boolean);
+
+  if (!patternSegments.length) {
+    return pathnameSegments.length === 0;
+  }
+
+  let pathnameIndex = 0;
+
+  for (let patternIndex = 0; patternIndex < patternSegments.length; patternIndex += 1) {
+    const patternSegment = patternSegments[patternIndex];
+
+    if (isOptionalCatchAllRouteSegment(patternSegment)) {
+      return patternIndex === patternSegments.length - 1;
+    }
+
+    if (isCatchAllRouteSegment(patternSegment)) {
+      return patternIndex === patternSegments.length - 1 && pathnameIndex < pathnameSegments.length;
+    }
+
+    if (pathnameIndex >= pathnameSegments.length) {
+      return false;
+    }
+
+    if (
+      !isDynamicRouteSegment(patternSegment) &&
+      patternSegment !== pathnameSegments[pathnameIndex]
+    ) {
+      return false;
+    }
+
+    pathnameIndex += 1;
+  }
+
+  return pathnameIndex === pathnameSegments.length;
+};
+
+const isLocalizedRouteManifestPathname = (
+  pathname: string,
+  routeManifest: WaysProxyConfig['routeManifest']
+): boolean => {
+  return Boolean(
+    routeManifest?.localized.some((pattern) =>
+      routeManifestPatternMatchesPathname(pattern, pathname)
+    )
+  );
+};
+
+const shouldRedirectToLocalizedPathname = (
+  pathname: string,
+  config: Pick<WaysProxyConfig, 'pathRouting' | 'routeManifest'>
+): boolean => {
+  const normalizedPathname = normalizePathname(pathname);
+
+  if (!isPathRoutingEnabled(normalizedPathname, config.pathRouting)) {
+    return false;
+  }
+
+  if (normalizedPathname === '/') {
+    return true;
+  }
+
+  return isLocalizedRouteManifestPathname(normalizedPathname, config.routeManifest);
+};
+
+const createLocalizedPathnameRedirectResponse = (
+  request: NextRequest,
+  config: Pick<WaysProxyConfig, 'domains' | 'baseLocale'>,
+  locale: string,
+  currentHost: string | null
+): NextResponse => {
+  const redirectUrl = request.nextUrl.clone();
+  const targetDomain = findWaysDomainForLocale(
+    locale,
+    resolveWaysDomains(config.baseLocale, config.domains)
+  );
+  if (targetDomain && currentHost && currentHost !== targetDomain.domain) {
+    redirectUrl.host = targetDomain.domain;
+  }
+  redirectUrl.pathname =
+    normalizePathname(request.nextUrl.pathname) === '/'
+      ? `/${locale}`
+      : `/${locale}${normalizePathname(request.nextUrl.pathname)}`;
+  const response = NextResponse.redirect(redirectUrl, 307);
+  appendVaryHeader(response, 'Accept-Language');
+  appendVaryHeader(response, 'Cookie');
+  return response;
+};
+
 const getWaysProxyResponseForConfig = async (
   request: NextRequest,
   config: WaysProxyConfig
@@ -147,19 +252,14 @@ const getWaysProxyResponseForConfig = async (
     request.headers.get('x-forwarded-host') || request.headers.get('host')
   );
 
-  if (pathname === '/') {
+  if (shouldRedirectToLocalizedPathname(pathname, config)) {
     const acceptedLocales = await resolveProxyAcceptedLocales(config, requestOrigin);
-    const locale = resolveProxyLocale(request, config, acceptedLocales);
-    const redirectUrl = request.nextUrl.clone();
-    const targetDomain = findWaysDomainForLocale(locale, resolvedDomains);
-    if (targetDomain && currentHost && currentHost !== targetDomain.domain) {
-      redirectUrl.host = targetDomain.domain;
+    if (extractLocalePrefix(pathname, acceptedLocales).locale) {
+      return null;
     }
-    redirectUrl.pathname = `/${locale}`;
-    const response = NextResponse.redirect(redirectUrl, 307);
-    appendVaryHeader(response, 'Accept-Language');
-    appendVaryHeader(response, 'Cookie');
-    return response;
+
+    const locale = resolveProxyLocale(request, config, acceptedLocales);
+    return createLocalizedPathnameRedirectResponse(request, config, locale, currentHost);
   }
 
   if (!config.domains?.length) {
