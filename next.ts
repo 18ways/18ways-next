@@ -33,6 +33,7 @@ export type { WaysRouteParams, WaysServerRouteContext } from './next-route-param
 
 export type WaysRootComponentProps = {
   children: React.ReactNode;
+  context?: WaysRootProps['context'];
   params?: WaysMaybePromise<WaysRouteParams>;
 };
 
@@ -323,6 +324,7 @@ export const createWaysRuntime = (options: WaysConfig): WaysRuntime => {
 
   const WaysRoot = async ({
     children,
+    context,
     params,
   }: WaysRootComponentProps): Promise<React.JSX.Element> => {
     const rootPersistLocaleCookie =
@@ -336,6 +338,7 @@ export const createWaysRuntime = (options: WaysConfig): WaysRuntime => {
       router: resolvedRouter,
       pathRouting: resolvedPathRouting,
       children,
+      context,
       persistLocaleCookie: rootPersistLocaleCookie,
       _persistLocaleCookiePolicy: waysRootOptions.persistLocaleCookie,
       domains,
