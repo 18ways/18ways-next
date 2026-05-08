@@ -51,6 +51,7 @@
   ],
   "scripts": {
     "build": "bun run bun-build.ts",
+    "dev": "bun run --watch bun-build.ts",
     "ts:check": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
