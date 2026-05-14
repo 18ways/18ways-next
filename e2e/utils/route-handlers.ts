@@ -48,6 +48,10 @@ function getPostDataJson(route: Route): any {
   }
 }
 
+function getRequestUrl(route: Route): URL {
+  return new URL(route.request().url());
+}
+
 export const textTranslations: Record<string, Record<string, string>> = {
   'Hello World': {
     'ja-JP': 'こんにちは世界',
@@ -129,11 +133,34 @@ export const routeHandlers = {
       await fulfillJson(
         route,
         500,
-        JSON.stringify({ error: 'Internal server error', data: [], errors: [] })
+        JSON.stringify({
+          error: 'Internal server error',
+          data: [],
+          errors: [],
+        })
       );
     } else {
       await fulfillJson(route, 200, createSuccessResponse(postData));
     }
+  },
+
+  paymentRequired: async (route: Route) => {
+    if (await handlePreflightIfNeeded(route)) return;
+    await fulfillJson(
+      route,
+      402,
+      JSON.stringify({
+        error: 'Payment Required',
+        message: 'Request would exceed your Free plan limit of 1000 words.',
+        usage: {
+          current: 1000,
+          requested: 12,
+          limit: 1000,
+          overage: 12,
+          creditsNeeded: 12,
+        },
+      })
+    );
   },
 
   emptyResponse: async (route: Route) => {
@@ -172,6 +199,7 @@ export const routeHandlerDescriptions: Record<RouteHandlerName, string> = {
   notFound404: 'Server returns 404 Not Found',
   server500Error: 'Server returns 500 Internal Server Error',
   spanishFails: 'Spanish translations fail with 500, others succeed',
+  paymentRequired: 'Server returns 402 Payment Required',
   emptyResponse: 'Server returns empty data array',
   success: 'All translations succeed normally',
   slowSuccess: 'All translations succeed but with a delay (default 1s)',
@@ -205,6 +233,16 @@ function createSeedSuccessResponse(postData: any): string {
   const seedData: Record<string, string> = {};
 
   return JSON.stringify({ data: seedData, errors: [] });
+}
+
+function getSeedTargetLocale(route: Route): string | null {
+  const postData = getPostDataJson(route);
+  const postTargetLocale = postData?.payload?.targetLocale;
+  if (typeof postTargetLocale === 'string') {
+    return postTargetLocale;
+  }
+
+  return getRequestUrl(route).searchParams.get('targetLocale');
 }
 
 export const seedHandlers = {
@@ -250,18 +288,41 @@ export const seedHandlers = {
   spanishFails: async (route: Route) => {
     if (await handlePreflightIfNeeded(route)) return;
     const postData = getPostDataJson(route);
-    const targetLocale = postData?.payload?.targetLocale;
+    const targetLocale = getSeedTargetLocale(route);
 
     if (targetLocale === 'es-ES') {
       await fulfillJson(
         route,
         500,
-        JSON.stringify({ error: 'Internal server error', data: {}, errors: [] })
+        JSON.stringify({
+          error: 'Internal server error',
+          data: {},
+          errors: [],
+        })
       );
       return;
     }
 
     await fulfillJson(route, 200, createSeedSuccessResponse(postData));
+  },
+
+  paymentRequired: async (route: Route) => {
+    if (await handlePreflightIfNeeded(route)) return;
+    await fulfillJson(
+      route,
+      402,
+      JSON.stringify({
+        error: 'Payment Required',
+        message: 'Request would exceed your Free plan limit of 1000 words.',
+        usage: {
+          current: 1000,
+          requested: 12,
+          limit: 1000,
+          overage: 12,
+          creditsNeeded: 12,
+        },
+      })
+    );
   },
 
   success: async (route: Route) => {
@@ -289,6 +350,7 @@ export const seedHandlerDescriptions: Record<SeedHandlerName, string> = {
   server500Error: 'Server returns 500 Internal Server Error',
   emptyResponse: 'Server returns empty data object',
   spanishFails: 'Spanish seed fails with 500, others succeed',
+  paymentRequired: 'Seed returns 402 Payment Required',
   success: 'Seed data fetched successfully',
   slowSuccess: 'Seed data fetched successfully but with a delay (default 1s)',
 };

@@ -48,4 +48,59 @@ test.describe('Error Handling', () => {
 
     await expect(helloWorld).toHaveText('こんにちは世界', { timeout: 10000 });
   });
+
+  test('shuts down runtime after payment required response', async ({ page }) => {
+    let seedRequests = 0;
+    let translateRequests = 0;
+    const billingConsoleErrors: string[] = [];
+
+    page.on('console', (message) => {
+      if (message.type() === 'error' && message.text().includes('Translation has been disabled')) {
+        billingConsoleErrors.push(message.text());
+      }
+    });
+
+    await page.route('**/translate', async (route) => {
+      translateRequests += 1;
+      const payload = route.request().postDataJSON() as
+        | { payload?: Array<{ targetLocale?: string }> }
+        | undefined;
+      const targetLocale = payload?.payload?.[0]?.targetLocale;
+      if (targetLocale === 'es-ES') {
+        return routeHandlers.paymentRequired(route);
+      }
+      return routeHandlers.success(route);
+    });
+    await page.route('**/seed', async (route) => {
+      seedRequests += 1;
+      return seedHandlers.success(route);
+    });
+
+    await page.goto(appUrl);
+
+    const helloWorld = page.locator('[data-translation-key="hello.world"]').first();
+    await expect(helloWorld).toHaveText(/Hello World/i);
+    const translateRequestsBeforePaymentBlock = translateRequests;
+
+    const paymentRequiredResponse = page.waitForResponse(
+      (response) => response.url().includes('/translate') && response.status() === 402,
+      { timeout: 5000 }
+    );
+    await page.getByTestId('language-switcher').selectOption('es-ES');
+    await paymentRequiredResponse;
+    const translateRequestsAfterPaymentBlock = translateRequests;
+
+    await expect(helloWorld).toHaveText(/Hello World/i);
+    await expect.poll(() => billingConsoleErrors.length, { timeout: 5000 }).toBe(1);
+
+    const librarySwitcherButton = page
+      .getByTestId('library-language-switcher')
+      .locator('button[aria-haspopup="listbox"]');
+    await expect(librarySwitcherButton).toBeDisabled();
+
+    await page.waitForTimeout(500);
+    expect(seedRequests).toBeLessThanOrEqual(1);
+    expect(translateRequestsAfterPaymentBlock).toBeGreaterThan(translateRequestsBeforePaymentBlock);
+    expect(translateRequests).toBe(translateRequestsAfterPaymentBlock);
+  });
 });

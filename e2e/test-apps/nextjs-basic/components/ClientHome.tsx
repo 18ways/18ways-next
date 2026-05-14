@@ -1,4 +1,4 @@
-import { T } from '@18ways/react';
+import { LanguageSwitcher, T } from '@18ways/react';
 
 interface HomeProps {
   locale: string;
@@ -34,6 +34,9 @@ export default function ClientHome({ locale, setLocale }: HomeProps) {
           Español
         </option>
       </select>
+      <div data-testid="library-language-switcher">
+        <LanguageSwitcher />
+      </div>
     </div>
   );
 }
