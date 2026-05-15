@@ -7,6 +7,7 @@ import {
 } from '@18ways/core/common';
 import {
   WAYS_LOCALE_COOKIE_NAME,
+  buildLocalizedPathname,
   extractLocalePrefix,
   findSupportedLocale,
   isPathRoutingEnabled,
@@ -134,6 +135,8 @@ const isOptionalCatchAllRouteSegment = (segment: string): boolean => {
   return /^\[\[\.\.\.[^[\]/]+\]\]$/.test(segment);
 };
 
+const isLocaleRegionSegment = (segment: string): boolean => /^[a-z]{2,3}-[a-z]{2}$/i.test(segment);
+
 const routeManifestPatternMatchesPathname = (pattern: string, pathname: string): boolean => {
   const patternSegments = normalizePathname(pattern).split('/').filter(Boolean);
   const pathnameSegments = normalizePathname(pathname).split('/').filter(Boolean);
@@ -224,6 +227,25 @@ const createLocalizedPathnameRedirectResponse = (
   return response;
 };
 
+const createCanonicalLocalePrefixRedirectResponse = (
+  request: NextRequest,
+  config: Pick<WaysProxyConfig, 'domains' | 'baseLocale'>,
+  locale: string,
+  unlocalizedPathname: string,
+  currentHost: string | null
+): NextResponse => {
+  const redirectUrl = request.nextUrl.clone();
+  const targetDomain = findWaysDomainForLocale(
+    locale,
+    resolveWaysDomains(config.baseLocale, config.domains)
+  );
+  if (targetDomain && currentHost && currentHost !== targetDomain.domain) {
+    redirectUrl.host = targetDomain.domain;
+  }
+  redirectUrl.pathname = buildLocalizedPathname(unlocalizedPathname, locale);
+  return NextResponse.redirect(redirectUrl, 307);
+};
+
 const getWaysProxyResponseForConfig = async (
   request: NextRequest,
   config: WaysProxyConfig
@@ -251,9 +273,39 @@ const getWaysProxyResponseForConfig = async (
   const currentHost = stripPortFromHost(
     request.headers.get('x-forwarded-host') || request.headers.get('host')
   );
+  let acceptedLocalesPromise: Promise<string[]> | null = null;
+  const getAcceptedLocales = () => {
+    acceptedLocalesPromise ||= resolveProxyAcceptedLocales(config, requestOrigin);
+    return acceptedLocalesPromise;
+  };
+
+  const firstSegment = pathname.split('/').filter(Boolean)[0];
+  const recognizedFirstSegment = recognizeLocale(firstSegment);
+  if (
+    firstSegment &&
+    isLocaleRegionSegment(firstSegment) &&
+    recognizedFirstSegment &&
+    (firstSegment !== recognizedFirstSegment || Array.isArray(config.acceptedLocales))
+  ) {
+    const acceptedLocales = await getAcceptedLocales();
+    const pathInfo = extractLocalePrefix(pathname, acceptedLocales);
+    if (
+      pathInfo.locale &&
+      pathInfo.locale !== firstSegment &&
+      isPathRoutingEnabled(pathInfo.unlocalizedPathname, config.pathRouting)
+    ) {
+      return createCanonicalLocalePrefixRedirectResponse(
+        request,
+        config,
+        pathInfo.locale,
+        pathInfo.unlocalizedPathname,
+        currentHost
+      );
+    }
+  }
 
   if (shouldRedirectToLocalizedPathname(pathname, config)) {
-    const acceptedLocales = await resolveProxyAcceptedLocales(config, requestOrigin);
+    const acceptedLocales = await getAcceptedLocales();
     if (extractLocalePrefix(pathname, acceptedLocales).locale) {
       return null;
     }

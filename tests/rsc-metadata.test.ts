@@ -73,6 +73,33 @@ describe('rsc metadata generation', () => {
     });
   });
 
+  it('uses ISO-compatible supported locale codes for hreflang and runtime URLs', async () => {
+    const { fetchAcceptedLocales } = await import('@18ways/core/common');
+    vi.mocked(fetchAcceptedLocales).mockResolvedValueOnce(['en-GB', 'tl-PH']);
+    mockState.headerStore = new Headers({
+      'accept-language': 'tl-PH,tl;q=0.9',
+      host: '18ways.com',
+      'x-forwarded-proto': 'https',
+      [WAYS_PATHNAME_HEADER_NAME]: '/docs',
+      [WAYS_LOCALIZED_PATHNAME_HEADER_NAME]: '/tl-PH/docs',
+    });
+
+    const metadata = await generateWaysMetadata({
+      apiKey: 'test-api-key',
+      baseLocale: 'en-GB',
+      pathRouting: PATH_ROUTING,
+    });
+
+    expect(metadata.alternates).toEqual({
+      canonical: 'https://18ways.com/tl-PH/docs',
+      languages: {
+        'en-GB': 'https://18ways.com/en-GB/docs',
+        'tl-PH': 'https://18ways.com/tl-PH/docs',
+        'x-default': 'https://18ways.com/en-GB/docs',
+      },
+    });
+  });
+
   it('switches metadata origins when locale domains are configured', async () => {
     const metadata = await generateWaysMetadata({
       apiKey: 'test-api-key',

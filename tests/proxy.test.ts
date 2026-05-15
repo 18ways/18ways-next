@@ -76,6 +76,29 @@ describe('proxy locale negotiation', () => {
     expect(response?.headers.get('location')).toBe('https://18ways.com/de-DE');
   });
 
+  it('ignores a stale locale cookie that is not in the configured source locale list', async () => {
+    const { getWaysProxyResponse } = await import('../proxy');
+
+    const response = await getWaysProxyResponse(
+      new NextRequest('https://18ways.com/', {
+        headers: {
+          'accept-language': 'tl-PH,tl;q=0.9,en;q=0.7',
+          cookie: `${WAYS_LOCALE_COOKIE_NAME}=fil-PH`,
+          host: '18ways.com',
+          'x-forwarded-proto': 'https',
+        },
+      }),
+      {
+        router: 'app',
+        baseLocale: 'en-GB',
+        acceptedLocales: ['en-GB', 'tl-PH'],
+      }
+    );
+
+    expect(response?.status).toBe(307);
+    expect(response?.headers.get('location')).toBe('https://18ways.com/tl-PH');
+  });
+
   it('does not fetch accepted locales when they are configured explicitly', async () => {
     const { fetchAcceptedLocales } = await import('@18ways/core/common');
     const { getWaysProxyResponse } = await import('../proxy');
@@ -230,6 +253,29 @@ describe('proxy locale negotiation', () => {
     expect(localizedResponse).toBeNull();
     expect(dashboardResponse).toBeNull();
     expect(fetchAcceptedLocales).not.toHaveBeenCalled();
+  });
+
+  it('redirects legacy locale aliases to the configured source locale code', async () => {
+    const { getWaysProxyResponse } = await import('../proxy');
+
+    const response = await getWaysProxyResponse(
+      new NextRequest('https://18ways.com/fil-PH/docs?tab=api', {
+        headers: {
+          host: '18ways.com',
+          'x-forwarded-proto': 'https',
+        },
+      }),
+      {
+        router: 'app',
+        baseLocale: 'en-GB',
+        acceptedLocales: ['en-GB', 'tl-PH'],
+        pathRouting,
+        routeManifest,
+      }
+    );
+
+    expect(response?.status).toBe(307);
+    expect(response?.headers.get('location')).toBe('https://18ways.com/tl-PH/docs?tab=api');
   });
 
   it('does not redirect unmatched unlocalized pathnames', async () => {
