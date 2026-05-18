@@ -174,6 +174,10 @@ const buildMetadataTranslationMap = async (params: {
 
     const translatedBySource = new Map<string, string>();
     result.data.forEach((entry) => {
+      if (typeof entry.translation !== 'string' || entry.translation.length === 0) {
+        return;
+      }
+
       const request = requests.find((candidate) => candidate.textHash === entry.textHash);
       if (!request) {
         return;
